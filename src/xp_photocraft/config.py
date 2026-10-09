@@ -74,7 +74,7 @@ OUTPUT_PREFIX = "xp-photocraft/fill"
 # The actions a workflow can be assigned to, and the workflow each runs until assigned.
 ACTIONS = ("fill", "remove")
 BUILTIN_WORKFLOW = "qwen-edit"
-BUILTIN_LABEL = "Qwen Image Edit 2511 (ComfyUI)"
+BUILTIN_LABEL = "Qwen Edit 2511 (ComfyUI)"
 
 # An external workflow command reads this request (written in the work dir) and prints the image.
 RUNNER_CONTRACT = "xp-photocraft/runner@1"

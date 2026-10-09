@@ -84,7 +84,7 @@ xp-photocraft connect http://192.168.1.20:8188   # tests it (reachable, every mo
 ```
 
 The connection is saved in `%LOCALAPPDATA%\xp-photocraft\connection.json` and used by every command
-and by the task bar, whose **Connection…** button does the same from PhotoCraft. Until one is saved,
+and by the task bar; a PhotoCraft build with the task bar sets it from its **XP** menu. Until one is saved,
 ComfyUI's own default `http://127.0.0.1:8188` is used; `--server` overrides it for one run. Status
 messages never print the address, so a screen recording does not leak it (the field itself does).
 
