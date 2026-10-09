@@ -28,6 +28,9 @@
       "upscale_method": "lanczos",
       "megapixels": 1.0,
       "resolution_steps": 1
+    },
+    "_meta": {
+      "title": "pc:scale"
     }
   },
   "grow": {
@@ -39,6 +42,36 @@
       ],
       "expand": 6,
       "tapered_corners": true
+    }
+  },
+  "mask_image": {
+    "class_type": "MaskToImage",
+    "inputs": {
+      "mask": [
+        "grow",
+        0
+      ]
+    }
+  },
+  "mask_blur": {
+    "class_type": "ImageBlur",
+    "inputs": {
+      "image": [
+        "mask_image",
+        0
+      ],
+      "blur_radius": 6,
+      "sigma": 3.0
+    }
+  },
+  "soft": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": [
+        "mask_blur",
+        0
+      ],
+      "channel": "red"
     }
   },
   "unet": {
@@ -100,10 +133,6 @@
         "clip",
         0
       ],
-      "vae": [
-        "vae",
-        0
-      ],
       "image1": [
         "scale",
         0
@@ -114,29 +143,46 @@
       "title": "pc:prompt"
     }
   },
-  "neg": {
-    "class_type": "TextEncodeQwenImageEditPlus",
+  "refenc": {
+    "class_type": "VAEEncode",
     "inputs": {
-      "clip": [
-        "clip",
+      "pixels": [
+        "scale",
         0
       ],
       "vae": [
         "vae",
         0
-      ],
-      "image1": [
-        "scale",
+      ]
+    }
+  },
+  "ref": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "pos",
         0
       ],
-      "prompt": ""
+      "latent": [
+        "refenc",
+        0
+      ]
+    }
+  },
+  "neg": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "ref",
+        0
+      ]
     }
   },
   "inpaint": {
     "class_type": "InpaintModelConditioning",
     "inputs": {
       "positive": [
-        "pos",
+        "ref",
         0
       ],
       "negative": [
@@ -152,7 +198,7 @@
         0
       ],
       "mask": [
-        "grow",
+        "soft",
         0
       ],
       "noise_mask": true
@@ -216,7 +262,7 @@
       "y": 0,
       "resize_source": false,
       "mask": [
-        "grow",
+        "soft",
         0
       ]
     }

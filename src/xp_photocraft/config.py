@@ -35,6 +35,13 @@ TOKEN_FILENAME = "control.token"
 # 160x75 selection gave the model enough surroundings to match the light.
 MARGIN_PX = 96
 
+# Generation size of the built-in graph (its pc:scale node), in megapixels: the region's own
+# size, clamped. Below the floor the model drops detail (a 120x50 px plate came out blank at
+# 0.07 MP, fine from 0.25); above the ceiling it is slow for nothing. Measured 2026-10-09 on a 3090:
+# sampling cost follows the pixel count once the reference latent is encoded at the same size.
+GEN_MIN_MP = 0.25
+GEN_MAX_MP = 1.0
+
 REGION_FILE = "region.png"
 MASK_FILE = "mask.png"
 PLACED_FILE = "placed.png"

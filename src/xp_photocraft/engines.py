@@ -16,8 +16,16 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
+from PIL import Image
+
 from xp_photocraft.comfy import Comfy
-from xp_photocraft.config import REQUEST_FILE, RUNNER_CONTRACT, RUNNER_TIMEOUT_S
+from xp_photocraft.config import (
+    GEN_MAX_MP,
+    GEN_MIN_MP,
+    REQUEST_FILE,
+    RUNNER_CONTRACT,
+    RUNNER_TIMEOUT_S,
+)
 
 REQUIRED_TAGS = ("pc:image", "pc:prompt")
 
@@ -55,6 +63,8 @@ class ComfyGraph:
         nodes["pc:image"]["inputs"]["image"] = self._comfy.upload(region)
         if "pc:mask" in nodes:
             nodes["pc:mask"]["inputs"]["image"] = self._comfy.upload(mask)
+        if "pc:scale" in nodes:
+            _set(nodes, "pc:scale", ("megapixels",), generation_megapixels(region))
         _set(nodes, "pc:prompt", ("prompt", "text"), self._template.replace("{prompt}", prompt))
         # A node titled pc:seed; else the prompt node's own seed (API nodes such as Nano Banana).
         seeded = "pc:seed" if "pc:seed" in nodes else "pc:prompt"
@@ -62,6 +72,13 @@ class ComfyGraph:
             _set(nodes, seeded, ("seed", "noise_seed"), seed)
         output = next((i for i, n in graph.items() if n is nodes.get("pc:output")), "")
         return self._comfy.run(graph, output)
+
+
+def generation_megapixels(region: Path) -> float:
+    """The size to generate ``region`` at: its own, clamped to the built-in graph's range."""
+    with Image.open(region) as image:
+        megapixels = image.width * image.height / 1e6
+    return round(min(GEN_MAX_MP, max(GEN_MIN_MP, megapixels)), 3)
 
 
 def _tagged(graph: dict[str, Any]) -> dict[str, dict[str, Any]]:

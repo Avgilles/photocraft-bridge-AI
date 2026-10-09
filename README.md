@@ -110,7 +110,10 @@ xp-photocraft fill --prompt "..." --workflow qwen-edit   # one run with another 
 
 ### Built-in: `qwen-edit`
 
-Qwen Image Edit 2511 with the 4-step Lightning LoRA, ComfyUI core nodes only. It uses the files
+Qwen Image Edit 2511 with the 4-step Lightning LoRA, ComfyUI core nodes only. The region is
+generated at its own size (clamped between 0.25 and 1 megapixel, see `pc:scale` below), with the
+reference latent encoded at that same size and the mask feathered: a small selection no longer
+costs a full-megapixel run. It uses the files
 ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in any subfolder:
 
 | Folder | File |
@@ -136,6 +139,7 @@ click ▸ Title) so the bridge knows where things go:
 | `pc:mask` *(optional)* | Load Image / Load Image (as Mask) | loads the mask: white = repaint |
 | `pc:seed` *(optional)* | the sampler | sets `seed` or `noise_seed` (else the prompt node's own `seed`) |
 | `pc:output` *(optional)* | Save Image | keeps this image (else the first saved one) |
+| `pc:scale` *(optional)* | Image Scale To Total Pixels | sets `megapixels` to the region's own size, clamped to 0.25–1 MP |
 
 Then declare it, with a path relative to `workflows.json`:
 
@@ -173,7 +177,7 @@ in PhotoCraft's status bar. Commands never reach PhotoCraft: `workflows` shows i
 - One run leaves about twenty history steps (the placeholder's, then the result's), interleaved
   with yours when you keep working: undoing part of them brings the placeholder back.
 - One generation at a time.
-- The built-in workflow resizes the region to about one megapixel; very large selections lose
+- The built-in workflow generates at one megapixel at most; very large selections lose
   detail.
 
 ## License

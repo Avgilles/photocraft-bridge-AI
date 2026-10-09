@@ -9,9 +9,10 @@ from typing import Any
 
 import pytest
 from click.testing import CliRunner
+from PIL import Image
 
 from xp_photocraft import cli, registry
-from xp_photocraft.engines import ComfyGraph, EngineError, Runner
+from xp_photocraft.engines import ComfyGraph, EngineError, Runner, generation_megapixels
 
 # A runner@1 command: writes a 4x4 PNG beside the request, or fails like a real one would.
 _FAKE_RUNNER = """
@@ -197,6 +198,7 @@ def test_builtin_graph_runs_on_the_server_files(
 ) -> None:
     monkeypatch.setattr(cli, "Comfy", _FakeComfy)
     engine = cli._engine(registry.Registry(), "qwen-edit", None, tmp_path)
+    Image.new("RGB", (312, 242)).save(tmp_path / "r.png")  # a plate with its margin
 
     engine.generate(tmp_path / "r.png", tmp_path / "m.png", "a plate", 7, "fill")
 
@@ -204,6 +206,17 @@ def test_builtin_graph_runs_on_the_server_files(
     assert graph["unet"]["inputs"]["unet_name"] == "qwen/edit_int8.safetensors"
     assert graph["pos"]["inputs"]["prompt"] == "a plate"
     assert graph["sampler"]["inputs"]["seed"] == 7
+    assert graph["scale"]["inputs"]["megapixels"] == 0.25  # the floor, not a full megapixel
+
+
+@pytest.mark.parametrize(
+    "size,expected", [((312, 242), 0.25), ((900, 800), 0.72), ((2000, 1500), 1.0)]
+)
+def test_generation_size_is_the_region_size_clamped(
+    tmp_path: Path, size: tuple[int, int], expected: float
+) -> None:
+    Image.new("RGB", size).save(tmp_path / "r.png")
+    assert generation_megapixels(tmp_path / "r.png") == expected
 
 
 def test_an_untagged_graph_is_refused_before_anything_runs() -> None:
