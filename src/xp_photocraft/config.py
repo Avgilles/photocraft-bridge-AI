@@ -40,6 +40,8 @@ MARGIN_PX = 96
 REGION_FILE = "region.png"
 MASK_FILE = "mask.png"
 PLACED_FILE = "placed.png"
+# The crossed card shown over the selection while it generates.
+PLACEHOLDER_FILE = "placeholder.png"
 
 # --- ComfyUI ---------------------------------------------------------------------
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -10,40 +11,91 @@ import pytest
 from PIL import Image
 
 from xp_photocraft import roundtrip
+from xp_photocraft.control import ControlError
+from xp_photocraft.placeholder import PlacementError
 from xp_photocraft.roundtrip import Rect
 
 
 class FakeControl:
-    """Records every command; answers the two inspections the round trip asks for."""
+    """A tiny PhotoCraft: documents with layers (top first) and a selection flag."""
 
     def __init__(self, work: Path, has_selection: bool = True) -> None:
-        self.work, self.has_selection, self.log = work, has_selection, []  # type: ignore[var-annotated]
+        self.work, self.log = work, []  # type: ignore[var-annotated]
+        self.docs: list[dict[str, Any]] = [
+            {"name": "poster.png", "layers": [2], "active": 2, "selection": has_selection}
+        ]
+        self.active, self.next_id = 0, 10
+
+    @property
+    def doc(self) -> dict[str, Any]:
+        return self.docs[self.active]
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
-        self.log.append((method, params or {}))
+        p = params or {}
+        self.log.append((method, p))
         if method == "app.save":
-            Image.new("RGB", (8, 8)).save(self.work / params["path"])  # type: ignore[index]
+            Image.new("RGB", (8, 8)).save(self.work / p["path"])
+        if method == "app.open":
+            self._open(p["path"])
         return {}
 
     def cmd(self, command: str, params: dict[str, Any] | None = None) -> Any:
-        self.log.append((command, params or {}))
+        p = params or {}
+        self.log.append((command, p))
+        doc = self.doc
         if command == "session.inspect":
-            return {"active": 2}
+            names = [{"index": i, "name": d["name"]} for i, d in enumerate(self.docs)]
+            return {"active": self.active, "documents": names}
         if command == "document.inspect":
             return {
-                "hasSelection": self.has_selection,
+                "name": doc["name"],
+                "hasSelection": doc["selection"],
                 "selectionBounds": [150, 1565, 160, 75],
                 "width": 1248,
                 "height": 1893,
+                "layers": [{"id": i} for i in doc["layers"]],
+                "activeLayer": doc["active"],
             }
+        if command == "image.duplicate":
+            self._open(p["name"], selection=doc["selection"])
+        elif command == "file.close":
+            self.docs.pop(self.active)
+            self.active = 0
+        elif command == "document.activate":
+            self.active = p["document"]
+        elif command in ("layer.new.layer", "edit.pasteSpecial.pasteInPlace"):
+            self.next_id += 1
+            doc["layers"].insert(doc["layers"].index(doc["active"]), self.next_id)
+            doc["active"] = self.next_id
+        elif command in ("layer.select", "layer.delete"):
+            if p["layer"] not in doc["layers"]:
+                raise ControlError(f"{command}: no layer {p['layer']}")
+            if command == "layer.delete":
+                doc["layers"].remove(p["layer"])
+            else:
+                doc["active"] = p["layer"]
+        elif command in ("select.loadSelection", "select.all"):
+            doc["selection"] = True
+        elif command == "select.deselect":
+            doc["selection"] = False
         return {}
+
+    def _open(self, name: str, selection: bool = False) -> None:
+        self.next_id += 1
+        self.docs.append(
+            {"name": name, "layers": [self.next_id], "active": self.next_id, "selection": selection}
+        )
+        self.active = len(self.docs) - 1
 
 
 class FakeEngine:
-    def __init__(self, fail: bool = False) -> None:
-        self.fail, self.request = fail, ()  # type: ignore[var-annotated]
+    """Returns a red PNG; ``meanwhile`` plays the artist while it "generates"."""
+
+    def __init__(self, meanwhile: Callable[[], None] = lambda: None, fail: bool = False) -> None:
+        self.meanwhile, self.fail, self.request = meanwhile, fail, ()  # type: ignore[var-annotated]
 
     def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
+        self.meanwhile()
         if self.fail:
             raise RuntimeError("server down")
         self.request = (region.name, mask.name, prompt, seed, mode)
@@ -52,36 +104,64 @@ class FakeEngine:
         return out.getvalue()
 
 
-def test_fill_selection_places_a_masked_layer_at_the_crop_offset(tmp_path: Path) -> None:
+def _poster(pc: FakeControl) -> dict[str, Any]:
+    return next(d for d in pc.docs if d["name"] == "poster.png")
+
+
+def test_fill_replaces_the_placeholder_and_hands_the_artist_layer_back(tmp_path: Path) -> None:
     pc, engine = FakeControl(tmp_path), FakeEngine()
+
     crop = roundtrip.fill_selection(pc, engine, "a plate", 7, tmp_path, "Generative Fill")  # type: ignore[arg-type]
 
     assert crop == Rect(54, 1469, 352, 267)
     placed = Image.open(tmp_path / "placed.png")
     assert placed.size == (1248, 1893)
-    assert (
-        placed.getpixel((crop.x, crop.y))[3] == 255
-        and placed.getpixel((crop.x - 1, crop.y))[3] == 0
-    )
+    assert placed.getpixel((crop.x, crop.y))[3] == 255
+    assert placed.getpixel((crop.x - 1, crop.y))[3] == 0
     assert engine.request == ("region.png", "mask.png", "a plate", 7, "fill")
-    commands = [c for c, _ in pc.log]
-    tail = commands[commands.index("edit.pasteSpecial.pasteInPlace") :]
-    assert tail[:4] == [
-        "edit.pasteSpecial.pasteInPlace",
-        "layer.setProps",
-        "select.loadSelection",
-        "layer.layerMask.revealSelection",
-    ]
-    assert commands[-1] == "channel.delete"
-    assert ("document.activate", {"document": 2}) in pc.log
+    card = Image.open(tmp_path / "placeholder.png")  # over the selection bounds, not the margin
+    assert card.getpixel((150, 1565))[3] > 0 and card.getpixel((149, 1565))[3] == 0
+    holder = next(
+        p["layer"] for c, p in pc.log if c == "layer.setProps" and "generating" in p.get("name", "")
+    )
+    mask = ("select.loadSelection", {"channel": "mask", "layer": holder})
+    poster = _poster(pc)
+    assert mask in pc.log and holder not in poster["layers"]
+    assert len(poster["layers"]) == 2 and poster["active"] == 2 and poster["selection"]
+    assert [d["name"] for d in pc.docs] == ["poster.png"]
 
 
-def test_fill_selection_cleans_up_the_channel_when_comfy_fails(tmp_path: Path) -> None:
+def test_the_artist_can_switch_documents_while_it_generates(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    def artist() -> None:
+        pc._open("sketch.png")
+        pc.doc["selection"] = False
+
+    roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+
+    assert pc.doc["name"] == "sketch.png"  # back where the artist was
+    assert len(_poster(pc)["layers"]) == 2  # result in, placeholder out
+
+
+def test_deleting_the_placeholder_cancels_the_result(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    def artist() -> None:
+        pc.doc["layers"].remove(pc.doc["layers"][0])
+
+    with pytest.raises(PlacementError, match="placeholder deleted"):
+        roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+    assert [c for c, _ in pc.log].count("edit.pasteSpecial.pasteInPlace") == 1  # the card only
+    assert _poster(pc)["layers"] == [2]
+
+
+def test_a_failed_generation_removes_the_placeholder(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path)
     with pytest.raises(RuntimeError, match="server down"):
         roundtrip.fill_selection(pc, FakeEngine(fail=True), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
-    assert pc.log[-1][0] == "channel.delete"
-    assert "edit.pasteSpecial.pasteInPlace" not in [c for c, _ in pc.log]
+    assert _poster(pc)["layers"] == [2]
+    assert [c for c, _ in pc.log].count("edit.pasteSpecial.pasteInPlace") == 1  # the card only
 
 
 def test_fill_selection_without_selection_touches_nothing(tmp_path: Path) -> None:

@@ -2,8 +2,9 @@
 
 Only existing PhotoCraft commands are used (measured on 0.5.0 and main, 2026-10-09):
 the region and the mask leave through throwaway duplicates saved under the automation
-root, and the result comes back through a full-size transparent PNG pasted in place,
-masked by the user's own selection (saved to a temporary channel, then deleted).
+root; a placeholder card (crossed frame, action and prompt) then covers the selection while
+the engine runs, and PhotoCraft is left alone, so the artist keeps working. The result comes
+back through a full-size transparent PNG pasted in place of the placeholder (``placeholder``).
 """
 
 from __future__ import annotations
@@ -15,13 +16,19 @@ from pathlib import Path
 
 from PIL import Image
 
-from xp_photocraft.config import MARGIN_PX, MASK_FILE, PLACED_FILE, REGION_FILE, REMOVE_PROMPT
-from xp_photocraft.control import Control, ControlError
+from xp_photocraft import placeholder
+from xp_photocraft.config import (
+    MARGIN_PX,
+    MASK_FILE,
+    PLACED_FILE,
+    PLACEHOLDER_FILE,
+    REGION_FILE,
+    REMOVE_PROMPT,
+)
+from xp_photocraft.control import Control
 from xp_photocraft.engines import Engine
 
 logger = logging.getLogger(__name__)
-
-SELECTION_CHANNEL = "xp-photocraft selection"
 
 
 @dataclass(frozen=True)
@@ -75,16 +82,23 @@ def _repaint(
 ) -> Rect:
     active, doc_size, bounds = _active_selection(pc)
     crop = context_rect(bounds, doc_size, MARGIN_PX)
-    pc.cmd("select.saveSelection", {"name": SELECTION_CHANNEL})
+    _export_region(pc, active, crop, work / REGION_FILE, prepare)
+    _export_mask(pc, active, crop, work / MASK_FILE)
+    lines = (
+        [layer_name, f'"{prompt}"', "generating…"]
+        if mode == "fill"
+        else [layer_name, "generating…"]
+    )
+    card = work / PLACEHOLDER_FILE
+    placeholder.draw_card(card, doc_size, (bounds.x, bounds.y, bounds.width, bounds.height), lines)
+    holder = placeholder.add(pc, card, layer_name)
     try:
-        _export_region(pc, active, crop, work / REGION_FILE, prepare)
-        _export_mask(pc, active, crop, work / MASK_FILE)
         png = engine.generate(work / REGION_FILE, work / MASK_FILE, prompt, seed, mode)
-        result = Image.open(io.BytesIO(png))
-        write_placed(result, crop, doc_size, work / PLACED_FILE)
-        _paste_masked(pc, active, layer_name)
-    finally:
-        _drop_selection_channel(pc, active)
+        write_placed(Image.open(io.BytesIO(png)), crop, doc_size, work / PLACED_FILE)
+        placeholder.place(pc, holder, layer_name)
+    except BaseException:
+        placeholder.discard(pc, holder)
+        raise
     logger.info("%s placed at %s", layer_name, crop)
     return crop
 
@@ -139,32 +153,10 @@ def _export_mask(pc: Control, active: int, crop: Rect, path: Path) -> None:
     _save_and_close(pc, active, path)
 
 
-def _paste_masked(pc: Control, active: int, layer_name: str) -> None:
-    # ponytail: copy/paste because placing a file is refused under automation (file.* paths);
-    # it overwrites the clipboard. Swap for a capability-scoped place once PhotoCraft has one.
-    pc.call("app.open", {"path": PLACED_FILE})
-    pc.cmd("select.all")
-    pc.cmd("edit.copy")
-    pc.cmd("file.close")
-    pc.cmd("document.activate", {"document": active})
-    pc.cmd("edit.pasteSpecial.pasteInPlace")
-    pc.cmd("layer.setProps", {"name": layer_name})
-    pc.cmd("select.loadSelection", {"channel": SELECTION_CHANNEL})
-    pc.cmd("layer.layerMask.revealSelection")
-
-
 def _save_and_close(pc: Control, active: int, path: Path) -> None:
     pc.call("app.save", {"path": path.name})
     pc.cmd("file.close")
     pc.cmd("document.activate", {"document": active})
-
-
-def _drop_selection_channel(pc: Control, active: int) -> None:
-    try:
-        pc.cmd("document.activate", {"document": active})
-        pc.cmd("channel.delete", {"channel": SELECTION_CHANNEL})
-    except ControlError:
-        logger.exception("could not delete the temporary channel %r", SELECTION_CHANNEL)
 
 
 def _crop_params(crop: Rect) -> dict[str, int]:

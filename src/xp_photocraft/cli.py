@@ -34,6 +34,7 @@ from xp_photocraft.config import (
 )
 from xp_photocraft.control import Control, ControlError
 from xp_photocraft.engines import Engine, EngineError, QwenComfy, Runner
+from xp_photocraft.placeholder import PlacementError
 from xp_photocraft.workflows import Models
 
 
@@ -176,6 +177,7 @@ def _run(
         EngineError,
         registry.WorkflowsError,
         roundtrip.NoSelectionError,
+        PlacementError,
         httpx.HTTPError,
     ) as e:
         click.echo(f"xp-photocraft {mode}: {e}", err=True)

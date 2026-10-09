@@ -24,6 +24,11 @@ xp-photocraft ── control protocol (loopback) ──► export region + margi
 
 - Only existing PhotoCraft commands are used: the region and the mask leave through throwaway
   duplicates written under PhotoCraft's automation root; the result comes back pasted in place.
+- **Keep working while it generates.** A placeholder layer, `Generative Fill (generating…)`, covers
+  the selection right away: a crossed frame naming the action and the prompt. The bridge then leaves
+  PhotoCraft alone until the result is ready, and puts it where the placeholder is (same document,
+  just above it, same mask), handing back whatever document, layer and selection you have by then.
+  Delete the placeholder to cancel.
 - `remove` first shows the model PhotoCraft's classical Content-Aware Fill of the selection: given
   the object itself, an edit model tends to redraw it.
 - The graph is Qwen Image Edit 2511 with the 4-step Lightning LoRA, ComfyUI core nodes only
@@ -152,7 +157,9 @@ The commands never reach PhotoCraft: `workflows` shows only ids and labels.
 
 - The result is pasted through the clipboard (PhotoCraft does not let automation place a file into
   an open document), so a run **overwrites the clipboard**.
-- One run leaves about eight history steps.
+- One run leaves about a dozen history steps, interleaved with yours when you keep working.
+- One generation at a time; the documents are found again by name, so keep two open documents from
+  sharing one while a generation runs.
 - The selection is sent with a 96 px margin and resized to about one megapixel for the model; very
   large selections lose detail.
 
