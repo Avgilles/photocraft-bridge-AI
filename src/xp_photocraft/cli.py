@@ -1,8 +1,9 @@
-"""xp-photocraft CLI: `fill` / `remove` the selection of a running PhotoCraft, `connect`, `doctor`.
+"""xp-photocraft CLI: `fill` / `remove` the selection of a running PhotoCraft, `connect`, `doctor`,
+`workflows` / `assign`.
 
-One JSON contract line on stdout (``fill@1`` / ``connect@1`` / ``doctor@1``), the human report on
-stderr. PhotoCraft's task bar shows the report's last line in its status bar: it never carries the
-server's address.
+One JSON contract line on stdout (``fill@1`` / ``connect@1`` / ``doctor@1`` / ``workflows@1``), the
+human report on stderr. PhotoCraft's task bar shows the report's last line in its status bar: it
+never carries the server's address.
 """
 
 from __future__ import annotations
@@ -19,16 +20,20 @@ import click
 import httpx
 from pydantic import BaseModel
 
-from xp_photocraft import connection, roundtrip
+from xp_photocraft import connection, registry, roundtrip
 from xp_photocraft.comfy import Comfy, ComfyError
 from xp_photocraft.config import (
+    ACTIONS,
+    BUILTIN_WORKFLOW,
     CONNECT_TIMEOUT_S,
     DEFAULT_CONTROL_PORT,
     TOKEN_FILENAME,
     connection_file,
     work_dir,
+    workflows_file,
 )
 from xp_photocraft.control import Control, ControlError
+from xp_photocraft.engines import Engine, EngineError, QwenComfy, Runner
 from xp_photocraft.workflows import Models
 
 
@@ -38,6 +43,7 @@ class FillResult(BaseModel):
     contract: str = "fill@1"
     ok: bool
     mode: str
+    workflow: str = ""
     layer: str = ""
     bounds: list[int] = []
     seed: int = 0
@@ -51,6 +57,23 @@ class ConnectResult(BaseModel):
     contract: str = "connect@1"
     ok: bool
     server: str = ""
+    error: str = ""
+
+
+class WorkflowChoice(BaseModel):
+    """One workflow the UI can offer."""
+
+    id: str
+    label: str
+
+
+class WorkflowsResult(BaseModel):
+    """``workflows@1``: every workflow, and the one each action runs."""
+
+    contract: str = "workflows@1"
+    ok: bool
+    workflows: list[WorkflowChoice] = []
+    assign: dict[str, str] = {}
     error: str = ""
 
 
@@ -104,6 +127,12 @@ _common = [
     ),
 ]
 
+_workflow_option = click.option(
+    "--workflow",
+    default="",
+    help="Workflow id for this run only (default: the one assigned with `assign`).",
+)
+
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
@@ -114,7 +143,13 @@ def _with_common(f: _F) -> _F:
     return f
 
 
-Action = Callable[[Control, Comfy, int, Path], roundtrip.Rect]
+Action = Callable[[Control, Engine, int, Path], roundtrip.Rect]
+
+
+def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: Path) -> Engine:
+    if workflow_id == BUILTIN_WORKFLOW:
+        return QwenComfy(Comfy(_server(server)))
+    return Runner(reg.workflows[workflow_id].command, root)
 
 
 def _run(
@@ -125,24 +160,37 @@ def _run(
     port: int,
     work: Path | None,
     server: str | None,
+    workflow: str,
 ) -> None:
     root = work or _default_work()
     seed = random.randrange(2**31) if seed is None else seed
     started = time.perf_counter()
     try:
-        rect = action(Control(port, root / TOKEN_FILENAME), Comfy(_server(server)), seed, root)
-    except (ControlError, ComfyError, roundtrip.NoSelectionError, httpx.HTTPError) as e:
+        reg = registry.load(workflows_file(_local_app_data()))
+        workflow = registry.pick(reg, mode, workflow)
+        engine = _engine(reg, workflow, server, root)
+        rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root)
+    except (
+        ControlError,
+        ComfyError,
+        EngineError,
+        registry.WorkflowsError,
+        roundtrip.NoSelectionError,
+        httpx.HTTPError,
+    ) as e:
         click.echo(f"xp-photocraft {mode}: {e}", err=True)
-        _emit(FillResult(ok=False, mode=mode, seed=seed, error=str(e)))
+        _emit(FillResult(ok=False, mode=mode, workflow=workflow, seed=seed, error=str(e)))
         sys.exit(1)
     seconds = round(time.perf_counter() - started, 2)
     click.echo(
-        f"xp-photocraft {mode}: layer {layer!r} at {rect} in {seconds} s (seed {seed})", err=True
+        f"xp-photocraft {mode}: layer {layer!r} at {rect} in {seconds} s ({workflow}, seed {seed})",
+        err=True,
     )
     _emit(
         FillResult(
             ok=True,
             mode=mode,
+            workflow=workflow,
             layer=layer,
             bounds=[rect.x, rect.y, rect.width, rect.height],
             seed=seed,
@@ -160,28 +208,34 @@ def cli() -> None:
 @cli.command()
 @click.option("--prompt", required=True, help="What to paint inside the selection.")
 @click.option("--seed", type=int, default=None, help="Fixed seed (random by default).")
+@_workflow_option
 @_with_common
-def fill(prompt: str, seed: int | None, port: int, work: Path | None, server: str | None) -> None:
+def fill(
+    prompt: str, seed: int | None, workflow: str, port: int, work: Path | None, server: str | None
+) -> None:
     """Generative Fill: repaint the selection from a prompt, as a new masked layer."""
     layer = "Generative Fill"
 
-    def action(pc: Control, comfy: Comfy, seed: int, root: Path) -> roundtrip.Rect:
-        return roundtrip.fill_selection(pc, comfy, prompt, seed, root, layer)
+    def action(pc: Control, engine: Engine, seed: int, root: Path) -> roundtrip.Rect:
+        return roundtrip.fill_selection(pc, engine, prompt, seed, root, layer)
 
-    _run("fill", layer, action, seed, port, work, server)
+    _run("fill", layer, action, seed, port, work, server, workflow)
 
 
 @cli.command()
 @click.option("--seed", type=int, default=None, help="Fixed seed (random by default).")
+@_workflow_option
 @_with_common
-def remove(seed: int | None, port: int, work: Path | None, server: str | None) -> None:
+def remove(
+    seed: int | None, workflow: str, port: int, work: Path | None, server: str | None
+) -> None:
     """Remove (AI): erase what is selected and rebuild the background, as a new masked layer."""
     layer = "Remove (AI)"
 
-    def action(pc: Control, comfy: Comfy, seed: int, root: Path) -> roundtrip.Rect:
-        return roundtrip.remove_selection(pc, comfy, seed, root, layer)
+    def action(pc: Control, engine: Engine, seed: int, root: Path) -> roundtrip.Rect:
+        return roundtrip.remove_selection(pc, engine, seed, root, layer)
 
-    _run("remove", layer, action, seed, port, work, server)
+    _run("remove", layer, action, seed, port, work, server, workflow)
 
 
 @cli.command()
@@ -207,6 +261,39 @@ def _brief(e: Exception) -> str:
     if isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
         return "server unreachable"
     return "not a ComfyUI server"
+
+
+@cli.command("workflows")
+def list_workflows() -> None:
+    """List the workflows and the one each action runs."""
+    _emit_workflows(registry.load)
+
+
+@cli.command()
+@click.argument("action", type=click.Choice(ACTIONS))
+@click.argument("workflow")
+def assign(action: str, workflow: str) -> None:
+    """Make ACTION (fill, remove) run WORKFLOW from now on."""
+    _emit_workflows(lambda path: registry.assign(path, action, workflow))
+
+
+def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
+    try:
+        reg = get(workflows_file(_local_app_data()))
+    except registry.WorkflowsError as e:
+        click.echo(f"xp-photocraft workflows: {e}", err=True)
+        _emit(WorkflowsResult(ok=False, error=str(e)))
+        sys.exit(1)
+    labels, assigned = registry.labels(reg), registry.assignment(reg)
+    for action, workflow_id in assigned.items():
+        click.echo(f"{action} -> {workflow_id} ({labels[workflow_id]})", err=True)
+    _emit(
+        WorkflowsResult(
+            ok=True,
+            workflows=[WorkflowChoice(id=k, label=v) for k, v in labels.items()],
+            assign=assigned,
+        )
+    )
 
 
 @cli.command()

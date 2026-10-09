@@ -72,7 +72,8 @@ xp-photocraft fill --prompt "a clean white licence plate, same night lighting"
 xp-photocraft remove
 ```
 
-Each command prints one JSON line on stdout (`fill@1`, `connect@1`, `doctor@1`) and a readable report on stderr.
+Each command prints one JSON line on stdout (`fill@1`, `connect@1`, `doctor@1`, `workflows@1`) and a
+readable report on stderr.
 A PhotoCraft build with a contextual task bar can run the same commands from buttons under the
 selection.
 
@@ -107,6 +108,45 @@ Two ways to reach a GPU on another machine:
 
 **ComfyUI has no authentication.** Anyone who can reach its port can run graphs and read its
 inputs and outputs. Never expose it to the internet; prefer the SSH tunnel, or a VPN.
+
+## Workflows: choose the model per action
+
+Out of the box both actions run the built-in `qwen-edit` workflow (the graph above, on the saved
+ComfyUI connection). Any other model, local or hosted, plugs in as an **external command** declared in
+`%LOCALAPPDATA%\xp-photocraft\workflows.json`:
+
+```json
+{
+  "workflows": {
+    "my-model": {"label": "My model", "command": ["python", "C:/tools/my_runner.py"]}
+  }
+}
+```
+
+```bash
+xp-photocraft workflows                  # every workflow, and the one each action runs
+xp-photocraft assign fill my-model       # Generative Fill now runs my-model; Remove keeps qwen-edit
+xp-photocraft fill --prompt "..." --workflow qwen-edit   # one run with another workflow
+```
+
+The command speaks **`xp-photocraft/runner@1`**:
+
+- The bridge writes `request.json` in the work folder and runs the command with that file's path as
+  its last argument:
+
+  ```json
+  {"contract": "xp-photocraft/runner@1", "image": "C:/.../region.png", "mask": "C:/.../mask.png",
+   "prompt": "a red kite in the sky", "seed": 123, "mode": "fill"}
+  ```
+
+  `image` is the selection plus its margin (sRGB PNG), `mask` is white where to paint, `mode` is
+  `fill` or `remove` (with a background-rebuilding prompt).
+- On success it prints one JSON line on stdout, `{"image": "<png>"}`: an absolute path, or one relative
+  to the work folder. The bridge resizes it to the region and masks it by the selection.
+- On failure it exits non-zero; the **last line of stderr** is shown in PhotoCraft's status bar, so
+  keep it short and free of addresses or keys.
+
+The commands never reach PhotoCraft: `workflows` shows only ids and labels.
 
 ## Limits
 

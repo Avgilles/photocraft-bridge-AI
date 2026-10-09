@@ -27,6 +27,8 @@ CONTROL_IDLE_RECONNECT_S = 20.0
 WORK_SEGMENTS = ("xp-photocraft", "work")
 # The saved ComfyUI connection, beside the work dir (never in a repository).
 CONNECTION_SEGMENTS = ("xp-photocraft", "connection.json")
+# The user's workflows (external commands) and the one each action runs, beside it.
+WORKFLOWS_SEGMENTS = ("xp-photocraft", "workflows.json")
 TOKEN_FILENAME = "control.token"
 
 # --- the round trip -----------------------------------------------------------
@@ -67,6 +69,19 @@ REMOVE_PROMPT = (
 
 OUTPUT_PREFIX = "xp-photocraft/fill"
 
+# --- workflows -------------------------------------------------------------------
+
+# The actions a workflow can be assigned to, and the workflow each runs until assigned.
+ACTIONS = ("fill", "remove")
+BUILTIN_WORKFLOW = "qwen-edit"
+BUILTIN_LABEL = "Qwen Image Edit 2511 (ComfyUI)"
+
+# An external workflow command reads this request (written in the work dir) and prints the image.
+RUNNER_CONTRACT = "xp-photocraft/runner@1"
+REQUEST_FILE = "request.json"
+# Same budget as a ComfyUI job: a cloud model behind a queue can be slow too.
+RUNNER_TIMEOUT_S = 600.0
+
 
 def work_dir(local_app_data: Path) -> Path:
     """Return the bridge's work dir under a ``%LOCALAPPDATA%``-like base."""
@@ -76,3 +91,8 @@ def work_dir(local_app_data: Path) -> Path:
 def connection_file(local_app_data: Path) -> Path:
     """Return the saved connection's file under a ``%LOCALAPPDATA%``-like base."""
     return local_app_data.joinpath(*CONNECTION_SEGMENTS)
+
+
+def workflows_file(local_app_data: Path) -> Path:
+    """Return the user's workflows file under a ``%LOCALAPPDATA%``-like base."""
+    return local_app_data.joinpath(*WORKFLOWS_SEGMENTS)

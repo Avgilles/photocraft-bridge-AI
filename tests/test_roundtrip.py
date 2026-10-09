@@ -1,4 +1,4 @@
-"""The round trip against a fake PhotoCraft and a fake ComfyUI: no socket, no GPU."""
+"""The round trip against a fake PhotoCraft and a fake engine: no socket, no GPU."""
 
 from __future__ import annotations
 
@@ -39,28 +39,22 @@ class FakeControl:
         return {}
 
 
-class FakeComfy:
+class FakeEngine:
     def __init__(self, fail: bool = False) -> None:
-        self.fail, self.graph = fail, None
+        self.fail, self.request = fail, ()  # type: ignore[var-annotated]
 
-    def find_models(self, wanted: object) -> object:
-        return wanted
-
-    def upload(self, file: Path) -> str:
-        return file.name
-
-    def run(self, graph: dict[str, object]) -> bytes:
+    def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
         if self.fail:
             raise RuntimeError("server down")
-        self.graph = graph  # type: ignore[assignment]
+        self.request = (region.name, mask.name, prompt, seed, mode)
         out = io.BytesIO()
         Image.new("RGB", (1176, 892), (255, 0, 0)).save(out, "PNG")
         return out.getvalue()
 
 
 def test_fill_selection_places_a_masked_layer_at_the_crop_offset(tmp_path: Path) -> None:
-    pc, comfy = FakeControl(tmp_path), FakeComfy()
-    crop = roundtrip.fill_selection(pc, comfy, "a plate", 7, tmp_path, "Generative Fill")  # type: ignore[arg-type]
+    pc, engine = FakeControl(tmp_path), FakeEngine()
+    crop = roundtrip.fill_selection(pc, engine, "a plate", 7, tmp_path, "Generative Fill")  # type: ignore[arg-type]
 
     assert crop == Rect(54, 1469, 352, 267)
     placed = Image.open(tmp_path / "placed.png")
@@ -69,7 +63,7 @@ def test_fill_selection_places_a_masked_layer_at_the_crop_offset(tmp_path: Path)
         placed.getpixel((crop.x, crop.y))[3] == 255
         and placed.getpixel((crop.x - 1, crop.y))[3] == 0
     )
-    assert comfy.graph["pos"]["inputs"]["prompt"] == "a plate"  # type: ignore[index]
+    assert engine.request == ("region.png", "mask.png", "a plate", 7, "fill")
     commands = [c for c, _ in pc.log]
     tail = commands[commands.index("edit.pasteSpecial.pasteInPlace") :]
     assert tail[:4] == [
@@ -85,7 +79,7 @@ def test_fill_selection_places_a_masked_layer_at_the_crop_offset(tmp_path: Path)
 def test_fill_selection_cleans_up_the_channel_when_comfy_fails(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path)
     with pytest.raises(RuntimeError, match="server down"):
-        roundtrip.fill_selection(pc, FakeComfy(fail=True), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+        roundtrip.fill_selection(pc, FakeEngine(fail=True), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
     assert pc.log[-1][0] == "channel.delete"
     assert "edit.pasteSpecial.pasteInPlace" not in [c for c, _ in pc.log]
 
@@ -93,7 +87,7 @@ def test_fill_selection_cleans_up_the_channel_when_comfy_fails(tmp_path: Path) -
 def test_fill_selection_without_selection_touches_nothing(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path, has_selection=False)
     with pytest.raises(roundtrip.NoSelectionError):
-        roundtrip.fill_selection(pc, FakeComfy(), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+        roundtrip.fill_selection(pc, FakeEngine(), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
     assert [c for c, _ in pc.log] == ["session.inspect", "document.inspect"]
 
 

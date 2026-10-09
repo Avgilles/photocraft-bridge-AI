@@ -1,4 +1,4 @@
-"""Selection → ComfyUI → masked layer, on the active PhotoCraft document.
+"""Selection → engine → masked layer, on the active PhotoCraft document.
 
 Only existing PhotoCraft commands are used (measured on 0.5.0 and main, 2026-10-09):
 the region and the mask leave through throwaway duplicates saved under the automation
@@ -12,27 +12,16 @@ import io
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from PIL import Image
 
-from xp_photocraft import workflows
 from xp_photocraft.config import MARGIN_PX, MASK_FILE, PLACED_FILE, REGION_FILE, REMOVE_PROMPT
 from xp_photocraft.control import Control, ControlError
+from xp_photocraft.engines import Engine
 
 logger = logging.getLogger(__name__)
 
 SELECTION_CHANNEL = "xp-photocraft selection"
-
-
-class Generator(Protocol):
-    """What the round trip needs from ComfyUI (a seam for tests)."""
-
-    def find_models(self, wanted: workflows.Models) -> workflows.Models: ...
-
-    def upload(self, file: Path) -> str: ...
-
-    def run(self, graph: dict[str, object]) -> bytes: ...
 
 
 @dataclass(frozen=True)
@@ -50,43 +39,48 @@ class NoSelectionError(RuntimeError):
 
 
 def fill_selection(
-    pc: Control, gen: Generator, prompt: str, seed: int, work: Path, layer_name: str
+    pc: Control, engine: Engine, prompt: str, seed: int, work: Path, layer_name: str
 ) -> Rect:
     """Repaint the active document's selection from ``prompt``; return the placed layer's rect."""
-    return _repaint(pc, gen, prompt, seed, work, layer_name, prepare=())
+    return _repaint(pc, engine, prompt, seed, work, layer_name, mode="fill", prepare=())
 
 
-def remove_selection(pc: Control, gen: Generator, seed: int, work: Path, layer_name: str) -> Rect:
+def remove_selection(pc: Control, engine: Engine, seed: int, work: Path, layer_name: str) -> Rect:
     """Erase what the selection holds and rebuild the background; return the placed layer's rect.
 
     The model is shown PhotoCraft's classical Content-Aware Fill of the selection, not the
     object: given the object, the edit model redraws it (measured 2026-10-09 on the couple).
     """
     return _repaint(
-        pc, gen, REMOVE_PROMPT, seed, work, layer_name, prepare=("edit.contentAwareFill",)
+        pc,
+        engine,
+        REMOVE_PROMPT,
+        seed,
+        work,
+        layer_name,
+        mode="remove",
+        prepare=("edit.contentAwareFill",),
     )
 
 
 def _repaint(
     pc: Control,
-    gen: Generator,
+    engine: Engine,
     prompt: str,
     seed: int,
     work: Path,
     layer_name: str,
+    mode: str,
     prepare: tuple[str, ...],
 ) -> Rect:
     active, doc_size, bounds = _active_selection(pc)
-    models = gen.find_models(workflows.Models())  # before touching the document
     crop = context_rect(bounds, doc_size, MARGIN_PX)
     pc.cmd("select.saveSelection", {"name": SELECTION_CHANNEL})
     try:
         _export_region(pc, active, crop, work / REGION_FILE, prepare)
         _export_mask(pc, active, crop, work / MASK_FILE)
-        graph = workflows.inpaint(
-            gen.upload(work / REGION_FILE), gen.upload(work / MASK_FILE), prompt, seed, models
-        )
-        result = Image.open(io.BytesIO(gen.run(graph)))
+        png = engine.generate(work / REGION_FILE, work / MASK_FILE, prompt, seed, mode)
+        result = Image.open(io.BytesIO(png))
         write_placed(result, crop, doc_size, work / PLACED_FILE)
         _paste_masked(pc, active, layer_name)
     finally:
