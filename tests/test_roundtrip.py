@@ -127,7 +127,9 @@ def test_fill_replaces_the_placeholder_and_hands_the_artist_layer_back(tmp_path:
     mask = ("select.loadSelection", {"channel": "mask", "layer": holder})
     poster = _poster(pc)
     assert mask in pc.log and holder not in poster["layers"]
-    assert len(poster["layers"]) == 2 and poster["active"] == 2 and poster["selection"]
+    # The result sits above the artist's layer and stays selected, as after Photoshop's fill.
+    assert len(poster["layers"]) == 2 and poster["active"] == poster["layers"][0]
+    assert poster["layers"][1] == 2 and poster["selection"]
     assert [d["name"] for d in pc.docs] == ["poster.png"]
 
 
@@ -142,6 +144,23 @@ def test_the_artist_can_switch_documents_while_it_generates(tmp_path: Path) -> N
 
     assert pc.doc["name"] == "sketch.png"  # back where the artist was
     assert len(_poster(pc)["layers"]) == 2  # result in, placeholder out
+
+
+def test_an_artist_on_another_layer_gets_it_back(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    painted: list[int] = []
+
+    def artist() -> None:
+        pc.cmd("layer.new.layer")
+        painted.append(pc.doc["active"])
+        pc.doc["selection"] = False
+
+    roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+
+    poster = _poster(pc)
+    assert len(poster["layers"]) == 3 and not poster["selection"]
+    assert poster["active"] == painted[0]
 
 
 def test_deleting_the_placeholder_cancels_the_result(tmp_path: Path) -> None:
