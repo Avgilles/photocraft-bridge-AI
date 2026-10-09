@@ -57,16 +57,18 @@ def draw_card(
     draw.line((x, y1, x1, y), fill=_CARD_LINE, width=stroke)
     size = max(12, min(40, min(w, h) // 9))
     font = ImageFont.load_default(size)
-    text = "\n".join(_wrap(lines, w, size))
-    box = draw.multiline_textbbox((0, 0), text, font=font, align="center")
-    tw, th = box[2] - box[0], box[3] - box[1]
     pad = size // 2
-    if tw + 2 * pad <= w and th + 2 * pad <= h:  # a small frame keeps just its cross
-        at = (x + (w - tw) // 2, y + (h - th) // 2)
-        draw.rectangle(
-            (at[0] - pad, at[1] - pad, at[0] + tw + pad, at[1] + th + pad), fill=_CARD_FILL
-        )
-        draw.multiline_text(at, text, font=font, fill=_CARD_TEXT, align="center")
+    # A smaller frame drops the prompt, then "generating…", then keeps just its cross.
+    for shown in (lines, [lines[0], lines[-1]], lines[:1]):
+        text = "\n".join(_wrap(shown, w, size))
+        box = draw.multiline_textbbox((0, 0), text, font=font, align="center")
+        tw, th = box[2] - box[0], box[3] - box[1]
+        if tw + 2 * pad <= w and th + 2 * pad <= h:
+            at = (x + (w - tw) // 2, y + (h - th) // 2)
+            plate = (at[0] - pad, at[1] - pad, at[0] + tw + pad, at[1] + th + pad)
+            draw.rectangle(plate, fill=_CARD_FILL)
+            draw.multiline_text(at, text, font=font, fill=_CARD_TEXT, align="center")
+            break
     canvas.save(path)
 
 
