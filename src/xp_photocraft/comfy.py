@@ -28,9 +28,9 @@ class ComfyError(RuntimeError):
 class Comfy:
     """A ComfyUI server reachable over HTTP: this PC, another PC on the LAN, or a tunnel."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, timeout: float = COMFY_TIMEOUT_S) -> None:
         # trust_env=False: an HTTP(S)_PROXY meant for the internet must not see this traffic.
-        self._http = httpx.Client(base_url=base_url, trust_env=False, timeout=COMFY_TIMEOUT_S)
+        self._http = httpx.Client(base_url=base_url, trust_env=False, timeout=timeout)
 
     def find_models(self, wanted: Models) -> Models:
         """Return ``wanted`` with each file name as the server lists it (any subfolder)."""

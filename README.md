@@ -72,20 +72,28 @@ xp-photocraft fill --prompt "a clean white licence plate, same night lighting"
 xp-photocraft remove
 ```
 
-Each command prints one JSON line on stdout (`fill@1`, `doctor@1`) and a readable report on stderr.
+Each command prints one JSON line on stdout (`fill@1`, `connect@1`, `doctor@1`) and a readable report on stderr.
 A PhotoCraft build with a contextual task bar can run the same commands from buttons under the
 selection.
 
-## ComfyUI on another PC
+## Connect to a ComfyUI server (this PC or another one)
+
+```bash
+xp-photocraft connect http://192.168.1.20:8188   # tests it (reachable, every model present), then saves it
+```
+
+The connection is saved in `%LOCALAPPDATA%\xp-photocraft\connection.json` and used by every command
+and by the task bar, whose **Connection…** button does the same from PhotoCraft. Until one is saved,
+ComfyUI's own default `http://127.0.0.1:8188` is used; `--server` overrides it for one run. Status
+messages never print the address, so a screen recording does not leak it (the field itself does).
 
 | Setting | Option | Environment variable | Default |
 |---|---|---|---|
-| ComfyUI URL | `--server` | `XP_PHOTOCRAFT_COMFY_URL` | `http://127.0.0.1:8188` |
+| ComfyUI URL | `connect` / `--server` | — | saved connection, else `http://127.0.0.1:8188` |
 | PhotoCraft control port | `--port` | `PHOTOCRAFT_CONTROL_PORT` | `7878` |
 | Shared work folder | `--work` | `XP_PHOTOCRAFT_WORK` | `%LOCALAPPDATA%\xp-photocraft\work` |
 
-Set the environment variable once and both the CLI and the task bar use it. Two ways to reach a GPU
-on another machine:
+Two ways to reach a GPU on another machine:
 
 - **SSH tunnel (recommended).** ComfyUI keeps listening on the GPU machine's loopback only:
 
@@ -94,8 +102,8 @@ on another machine:
   ```
 
   Then the default `http://127.0.0.1:8188` works as is.
-- **Trusted LAN.** Start ComfyUI with `--listen` on the GPU machine and point
-  `XP_PHOTOCRAFT_COMFY_URL` at `http://<its-address>:8188`.
+- **Trusted LAN.** Start ComfyUI with `--listen` on the GPU machine, then
+  `xp-photocraft connect http://<its-address>:8188`.
 
 **ComfyUI has no authentication.** Anyone who can reach its port can run graphs and read its
 inputs and outputs. Never expose it to the internet; prefer the SSH tunnel, or a VPN.

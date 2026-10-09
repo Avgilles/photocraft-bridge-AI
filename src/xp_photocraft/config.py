@@ -1,8 +1,8 @@
 """Every tunable this project has, as plain module constants.
 
-This module never reads ``os.environ``: the three settings a user may change (ComfyUI URL,
-PhotoCraft control port, work dir) are CLI options with an environment variable each,
-declared where they are used (``cli.py``).
+This module never reads ``os.environ``. The ComfyUI URL is the saved connection
+(``connection.json``, set with ``xp-photocraft connect``); the control port and the work dir are
+CLI options with an environment variable each, declared where they are used (``cli.py``).
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ CONTROL_TIMEOUT_S = 120.0
 # roots (--automation-read-root / --automation-write-root): PhotoCraft refuses any
 # path outside them, and paths sent over control are relative to them.
 WORK_SEGMENTS = ("xp-photocraft", "work")
+# The saved ComfyUI connection, beside the work dir (never in a repository).
+CONNECTION_SEGMENTS = ("xp-photocraft", "connection.json")
 TOKEN_FILENAME = "control.token"
 
 # --- the round trip -----------------------------------------------------------
@@ -36,10 +38,12 @@ PLACED_FILE = "placed.png"
 
 # --- ComfyUI ---------------------------------------------------------------------
 
-# ComfyUI's own default address. Another PC: start ComfyUI there and point --server (or
-# XP_PHOTOCRAFT_COMFY_URL) at it, directly on a trusted LAN or through an SSH tunnel.
+# ComfyUI's own default address, used until a connection is saved. Another PC: start ComfyUI
+# there and `xp-photocraft connect` to it, on a trusted LAN or through an SSH tunnel.
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
 COMFY_TIMEOUT_S = 60.0
+# Testing a connection answers fast or not at all: a wrong address must not hang the UI.
+CONNECT_TIMEOUT_S = 5.0
 COMFY_POLL_S = 0.5
 # An inpaint took ~70 s with cold models, ~20 s warm, on one consumer GPU. Ten minutes
 # covers a cold load behind a queue.
@@ -64,3 +68,8 @@ OUTPUT_PREFIX = "xp-photocraft/fill"
 def work_dir(local_app_data: Path) -> Path:
     """Return the bridge's work dir under a ``%LOCALAPPDATA%``-like base."""
     return local_app_data.joinpath(*WORK_SEGMENTS)
+
+
+def connection_file(local_app_data: Path) -> Path:
+    """Return the saved connection's file under a ``%LOCALAPPDATA%``-like base."""
+    return local_app_data.joinpath(*CONNECTION_SEGMENTS)
