@@ -70,3 +70,44 @@ def test_connect_saves_any_reachable_comfyui(
     assert result.exit_code == (0 if reachable else 1)
     assert saved.is_file() is reachable  # saved even without the built-in models
     assert "10.0.0.7" not in result.stderr  # the status line shown on screen hides the address
+
+
+def _status_error() -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "http://10.0.0.7:8188/upload/image")
+    try:
+        httpx.Response(500, request=request).raise_for_status()
+    except httpx.HTTPStatusError as e:
+        return e
+    raise AssertionError("a 500 is an error")
+
+
+class _FailingComfy(_FakeComfy):
+    """A ComfyUI that fails over HTTP mid-run (the tunnel died, the server crashed)."""
+
+    error: Exception = httpx.ConnectError("[WinError 10061] No connection could be made")
+
+    def find_models(self) -> object:
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "shown"),
+    [
+        (httpx.ConnectError("[WinError 10061] No connection could be made"), "server unreachable"),
+        (httpx.ReadTimeout("timed out"), "server unreachable"),
+        (_status_error(), "answered HTTP 500"),
+    ],
+)
+def test_fill_says_what_comfyui_did_without_its_address(
+    error: Exception, shown: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(_FailingComfy, "error", error)
+    monkeypatch.setattr(cli, "Comfy", _FailingComfy)
+
+    result = CliRunner().invoke(cli.cli, ["fill", "--prompt", "a plate"])
+
+    assert result.exit_code == 1
+    # The last line is PhotoCraft's status bar: one line, in words, no URL (httpx puts it in some).
+    assert result.stderr.strip().splitlines()[-1] == f"xp-photocraft fill: ComfyUI {shown}"
+    assert "10.0.0.7" not in result.stdout + result.stderr

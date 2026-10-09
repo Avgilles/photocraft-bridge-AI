@@ -201,8 +201,9 @@ def _run(
         PlacementError,
         httpx.HTTPError,
     ) as e:
-        click.echo(f"xp-photocraft {mode}: {e}", err=True)
-        _emit(FillResult(ok=False, mode=mode, workflow=workflow, seed=seed, error=str(e)))
+        error = _http_brief(e) if isinstance(e, httpx.HTTPError) else str(e)
+        click.echo(f"xp-photocraft {mode}: {error}", err=True)
+        _emit(FillResult(ok=False, mode=mode, workflow=workflow, seed=seed, error=error))
         sys.exit(1)
     seconds = round(time.perf_counter() - started, 2)
     click.echo(
@@ -289,6 +290,15 @@ def _brief(e: Exception) -> str:
     return "not a ComfyUI server"
 
 
+def _http_brief(e: httpx.HTTPError) -> str:
+    """An HTTP failure in a few words: httpx puts the server's URL in some of its messages."""
+    if isinstance(e, (httpx.NetworkError, httpx.TimeoutException)):
+        return "ComfyUI server unreachable"
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"ComfyUI answered HTTP {e.response.status_code}"
+    return f"ComfyUI request failed ({type(e).__name__})"
+
+
 @cli.command("workflows")
 def list_workflows() -> None:
     """List the workflows and the one each action runs."""
@@ -350,7 +360,9 @@ def _check(probe: Callable[[], object]) -> str:
     """Run one check: "ok", or what went wrong."""
     try:
         probe()
-    except (ControlError, ComfyError, registry.WorkflowsError, httpx.HTTPError, KeyError) as e:
+    except httpx.HTTPError as e:
+        return _http_brief(e)
+    except (ControlError, ComfyError, registry.WorkflowsError, KeyError) as e:
         return str(e)
     except ValueError:
         return "not a ComfyUI server"
