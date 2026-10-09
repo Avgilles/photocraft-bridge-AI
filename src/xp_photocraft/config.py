@@ -17,6 +17,9 @@ DEFAULT_CONTROL_PORT = 7878
 
 # Desktop control waits up to 60 s for a reply; a socket that outlives it is broken.
 CONTROL_TIMEOUT_S = 120.0
+# PhotoCraft closes a control socket after a 30 s read timeout (control-protocol.md, "Transport
+# limits"), and a generation waits longer than that: reconnect before a request past this idle time.
+CONTROL_IDLE_RECONNECT_S = 20.0
 
 # The bridge's files live in ONE folder, granted to PhotoCraft as both automation
 # roots (--automation-read-root / --automation-write-root): PhotoCraft refuses any
