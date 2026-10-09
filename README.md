@@ -172,8 +172,7 @@ in PhotoCraft's status bar. Commands never reach PhotoCraft: `workflows` shows i
   an open document), so a run **overwrites the clipboard**.
 - One run leaves about twenty history steps (the placeholder's, then the result's), interleaved
   with yours when you keep working: undoing part of them brings the placeholder back.
-- One generation at a time; the documents are found again by name, so keep two open documents from
-  sharing one while a generation runs.
+- One generation at a time.
 - The built-in workflow resizes the region to about one megapixel; very large selections lose
   detail.
 

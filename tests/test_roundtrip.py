@@ -190,6 +190,30 @@ def test_deleting_the_placeholder_cancels_the_result(tmp_path: Path) -> None:
     assert _poster(pc)["layers"] == [2]
 
 
+def test_two_documents_of_one_name_each_keep_their_own(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)  # the same file opened twice: the generation runs in the second
+    pc.docs.insert(0, {"name": "poster.png", "layers": [5], "active": 5, "selection": False})
+    pc.active = 1
+
+    roundtrip.fill_selection(pc, FakeEngine(), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+
+    assert pc.docs[0]["layers"] == [5]  # untouched
+    assert len(pc.docs[1]["layers"]) == 2  # result in, placeholder out
+    assert pc.active == 1
+
+
+def test_a_cancelled_result_leaves_the_artist_where_they_are(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    def artist() -> None:
+        pc.doc["layers"].remove(pc.doc["layers"][0])  # deletes the placeholder, then moves on
+        pc._open("sketch.png")
+
+    with pytest.raises(PlacementError, match="placeholder deleted"):
+        roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+    assert pc.doc["name"] == "sketch.png"
+
+
 def test_a_failed_generation_removes_the_placeholder(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path)
     with pytest.raises(RuntimeError, match="server down"):

@@ -2,7 +2,8 @@
 
 ``add`` pastes a placeholder card over the selection (a crossed frame naming the action and the
 prompt), masked by the selection, and hands the artist's layer back. The generation then runs
-without touching PhotoCraft. ``place`` finds the document again by name, pastes the result just
+without touching PhotoCraft. ``place`` finds the document again (by name, then by the placeholder
+layer), pastes the result just
 above the placeholder, masks it with the placeholder's mask (the selection), deletes the
 placeholder and restores whatever document, layer and selection the artist has by then.
 Deleting the placeholder meanwhile cancels the result.
@@ -133,16 +134,23 @@ def _copy_file(pc: Control, name: str) -> None:
 
 
 def _activate(pc: Control, placeholder: Placeholder) -> dict[str, Any]:
-    """Make the placeholder's document active; return its inspection."""
-    documents = pc.cmd("session.inspect")["documents"]
-    index = next((d["index"] for d in documents if d["name"] == placeholder.document), None)
-    if index is None:
+    """Make the placeholder's document active; return its inspection.
+
+    Found by name, then by the placeholder layer: layer ids are unique in a PhotoCraft session,
+    so the same file opened twice is no ambiguity. When the placeholder is gone, the artist's
+    document is made active again.
+    """
+    session = pc.cmd("session.inspect")
+    named = [d["index"] for d in session["documents"] if d["name"] == placeholder.document]
+    if not named:
         raise PlacementError(f"{placeholder.document!r} was closed: result not placed")
-    pc.cmd("document.activate", {"document": index})
-    doc: dict[str, Any] = pc.cmd("document.inspect")
-    if all(layer["id"] != placeholder.layer for layer in doc["layers"]):
-        raise PlacementError("placeholder deleted: result not placed")
-    return doc
+    for index in named:
+        pc.cmd("document.activate", {"document": index})
+        doc: dict[str, Any] = pc.cmd("document.inspect")
+        if any(layer["id"] == placeholder.layer for layer in doc["layers"]):
+            return doc
+    pc.cmd("document.activate", {"document": session["active"]})
+    raise PlacementError("placeholder deleted: result not placed")
 
 
 def _restore(
