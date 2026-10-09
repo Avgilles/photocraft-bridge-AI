@@ -43,7 +43,7 @@ class Placeholder:
     layer: int
     # The document's revision once it was added: any edit, layer or selection change moves it
     # (switching documents does not), which tells whether the artist worked there meanwhile.
-    revision: int = 0
+    revision: int
 
 
 def draw_card(

@@ -120,8 +120,9 @@ ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in a
 | `vae` | `qwen_image_vae.safetensors` |
 | `loras` | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` |
 
-[`examples/qwen-edit-2511.api.json`](examples/qwen-edit-2511.api.json) is the same graph, as a
-starting point for your own settings.
+The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json):
+copy it next to your `workflows.json` as a starting point for your own settings (the
+[example](examples/workflows.json) declares it as `qwen-custom`).
 
 ### Your own ComfyUI workflow
 

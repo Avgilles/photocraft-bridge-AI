@@ -198,6 +198,14 @@ def test_a_failed_generation_removes_the_placeholder(tmp_path: Path) -> None:
     assert [c for c, _ in pc.log].count("edit.pasteSpecial.pasteInPlace") == 1  # the card only
 
 
+def test_remove_shows_the_model_a_content_aware_fill_of_the_duplicate(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    roundtrip.remove_selection(pc, FakeEngine(), 1, tmp_path, "Remove (AI)")  # type: ignore[arg-type]
+    commands = [c for c, _ in pc.log]
+    caf = commands.index("edit.contentAwareFill")
+    assert commands[caf - 1] == "image.duplicate" and commands.count("edit.contentAwareFill") == 1
+
+
 def test_fill_selection_without_selection_touches_nothing(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path, has_selection=False)
     with pytest.raises(roundtrip.NoSelectionError):

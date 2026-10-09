@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from xp_photocraft import cli, registry, workflows
+from xp_photocraft import cli, registry
 from xp_photocraft.engines import ComfyGraph, EngineError, Runner
 
 # A runner@1 command: writes a 4x4 PNG beside the request, or fails like a real one would.
@@ -153,8 +153,8 @@ class _FakeComfy:
         self.graph: dict[str, Any] = {}
         self.output = "unset"
 
-    def find_models(self) -> workflows.Models:
-        return workflows.Models("unet", "clip", "vae", "lora")
+    def find_models(self) -> dict[str, dict[str, str]]:
+        return {"UNETLoader": {"unet_name": "qwen/edit_int8.safetensors"}}
 
     def upload(self, file: Path) -> str:
         return f"up_{file.name}"
@@ -192,12 +192,18 @@ def test_graph_engine_fills_the_tagged_nodes(tmp_path: Path) -> None:
     assert _GRAPH["3"]["inputs"]["text"] == ""  # the loaded graph is left untouched
 
 
-def test_builtin_graph_is_a_tagged_graph(tmp_path: Path) -> None:
-    comfy = _FakeComfy()
-    graph = workflows.inpaint(comfy.find_models())
-    ComfyGraph(comfy, graph).generate(tmp_path / "r.png", tmp_path / "m.png", "a plate", 7, "fill")  # type: ignore[arg-type]
-    assert comfy.graph["pos"]["inputs"]["prompt"] == "a plate"
-    assert comfy.graph["sampler"]["inputs"]["seed"] == 7
+def test_builtin_graph_runs_on_the_server_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "Comfy", _FakeComfy)
+    engine = cli._engine(registry.Registry(), "qwen-edit", None, tmp_path)
+
+    engine.generate(tmp_path / "r.png", tmp_path / "m.png", "a plate", 7, "fill")
+
+    graph = engine._comfy.graph  # type: ignore[attr-defined]
+    assert graph["unet"]["inputs"]["unet_name"] == "qwen/edit_int8.safetensors"
+    assert graph["pos"]["inputs"]["prompt"] == "a plate"
+    assert graph["sampler"]["inputs"]["seed"] == 7
 
 
 def test_an_untagged_graph_is_refused_before_anything_runs() -> None:

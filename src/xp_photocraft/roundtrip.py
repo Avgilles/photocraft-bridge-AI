@@ -49,7 +49,7 @@ def fill_selection(
     pc: Control, engine: Engine, prompt: str, seed: int, work: Path, layer_name: str
 ) -> Rect:
     """Repaint the active document's selection from ``prompt``; return the placed layer's rect."""
-    return _repaint(pc, engine, prompt, seed, work, layer_name, mode="fill", prepare=())
+    return _repaint(pc, engine, prompt, seed, work, layer_name, mode="fill")
 
 
 def remove_selection(pc: Control, engine: Engine, seed: int, work: Path, layer_name: str) -> Rect:
@@ -58,31 +58,15 @@ def remove_selection(pc: Control, engine: Engine, seed: int, work: Path, layer_n
     The model is shown PhotoCraft's classical Content-Aware Fill of the selection, not the
     object: given the object, the edit model redraws it (measured 2026-10-09 on the couple).
     """
-    return _repaint(
-        pc,
-        engine,
-        REMOVE_PROMPT,
-        seed,
-        work,
-        layer_name,
-        mode="remove",
-        prepare=("edit.contentAwareFill",),
-    )
+    return _repaint(pc, engine, REMOVE_PROMPT, seed, work, layer_name, mode="remove")
 
 
 def _repaint(
-    pc: Control,
-    engine: Engine,
-    prompt: str,
-    seed: int,
-    work: Path,
-    layer_name: str,
-    mode: str,
-    prepare: tuple[str, ...],
+    pc: Control, engine: Engine, prompt: str, seed: int, work: Path, layer_name: str, mode: str
 ) -> Rect:
     active, doc_size, bounds = _active_selection(pc)
     crop = context_rect(bounds, doc_size, MARGIN_PX)
-    _export_region(pc, active, crop, work / REGION_FILE, prepare)
+    _export_region(pc, active, crop, work / REGION_FILE, mode)
     _export_mask(pc, active, crop, work / MASK_FILE)
     lines = (
         [layer_name, f'"{prompt}"', "generating…"]
@@ -130,14 +114,12 @@ def _active_selection(pc: Control) -> tuple[int, tuple[int, int], Rect]:
     return active, (int(doc["width"]), int(doc["height"])), Rect(x, y, w, h)
 
 
-def _export_region(
-    pc: Control, active: int, crop: Rect, path: Path, prepare: tuple[str, ...]
-) -> None:
+def _export_region(pc: Control, active: int, crop: Rect, path: Path, mode: str) -> None:
     # sRGB: the models expect display-referred pixels, and a PNG of a linear (EXR) document
     # keeps linear values under an embedded linear profile that ComfyUI ignores.
     pc.cmd("image.duplicate", {"name": "xp-photocraft region", "mergedOnly": True})
-    for command in prepare:  # on the duplicate, while it still has the selection
-        pc.cmd(command)
+    if mode == "remove":  # on the duplicate, while it still has the selection
+        pc.cmd("edit.contentAwareFill")
     pc.cmd("edit.convertToProfile", {"profile": "srgb"})
     pc.cmd("image.crop", {**_crop_params(crop), "deleteCroppedPixels": True})
     _save_and_close(pc, active, path)

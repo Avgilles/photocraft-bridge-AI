@@ -54,19 +54,27 @@ COMFY_POLL_S = 0.5
 # covers a cold load behind a queue.
 COMFY_JOB_TIMEOUT_S = 600.0
 
-# The built-in workflow: Qwen Image Edit 2511 + the 4-step Lightning LoRA, as ComfyUI's own
-# "Qwen Image Edit 2511" templates install them (the main one ships fp8mixed, the int8 one
-# int8_convrot), first match wins. Each is looked up in the server's /object_info by file name,
-# so it may sit in any subfolder of its models folder.
-MODEL_FILES = {
-    "unet": (
-        "qwen_image_edit_2511_fp8mixed.safetensors",
-        "qwen_image_edit_2511_int8_convrot.safetensors",
-        "qwen_image_edit_2511_bf16.safetensors",
+# The built-in workflow: Qwen Image Edit 2511 + the 4-step Lightning LoRA, an API graph shipped
+# with the package (also the starting point for your own settings).
+BUILTIN_GRAPH = "qwen-edit-2511.api.json"
+# Its loader nodes: the input to set, and the files ComfyUI's own "Qwen Image Edit 2511" templates
+# install (the main one ships fp8mixed, the int8 one int8_convrot), first match wins. Each is
+# looked up in the server's /object_info by file name, so it may sit in any subfolder.
+BUILTIN_MODELS = {
+    "UNETLoader": (
+        "unet_name",
+        (
+            "qwen_image_edit_2511_fp8mixed.safetensors",
+            "qwen_image_edit_2511_int8_convrot.safetensors",
+            "qwen_image_edit_2511_bf16.safetensors",
+        ),
     ),
-    "clip": ("qwen_2.5_vl_7b_fp8_scaled.safetensors",),
-    "vae": ("qwen_image_vae.safetensors",),
-    "lora": ("Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",),
+    "CLIPLoader": ("clip_name", ("qwen_2.5_vl_7b_fp8_scaled.safetensors",)),
+    "VAELoader": ("vae_name", ("qwen_image_vae.safetensors",)),
+    "LoraLoaderModelOnly": (
+        "lora_name",
+        ("Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",),
+    ),
 }
 
 # Remove has no prompt of its own: it asks the edit model for the background.
@@ -74,8 +82,6 @@ REMOVE_PROMPT = (
     "remove the object inside the selection and reconstruct the background behind it, "
     "matching the surrounding texture, perspective and lighting"
 )
-
-OUTPUT_PREFIX = "xp-photocraft/fill"
 
 # --- workflows -------------------------------------------------------------------
 

@@ -9,16 +9,12 @@ from typing import Any
 
 import httpx
 
-from xp_photocraft.config import COMFY_JOB_TIMEOUT_S, COMFY_POLL_S, COMFY_TIMEOUT_S, MODEL_FILES
-from xp_photocraft.workflows import Models
-
-# Where each model's name list lives in /object_info: (node class, input name).
-_MODEL_INPUTS = {
-    "unet": ("UNETLoader", "unet_name"),
-    "clip": ("CLIPLoader", "clip_name"),
-    "vae": ("VAELoader", "vae_name"),
-    "lora": ("LoraLoaderModelOnly", "lora_name"),
-}
+from xp_photocraft.config import (
+    BUILTIN_MODELS,
+    COMFY_JOB_TIMEOUT_S,
+    COMFY_POLL_S,
+    COMFY_TIMEOUT_S,
+)
 
 
 class ComfyError(RuntimeError):
@@ -39,21 +35,22 @@ class Comfy:
         if "system" not in self._http.get("/system_stats").json():
             raise ComfyError("not a ComfyUI server")
 
-    def find_models(self) -> Models:
-        """Return the built-in workflow's models as the server lists them (first variant found)."""
-        found: dict[str, str] = {}
+    def find_models(self) -> dict[str, dict[str, str]]:
+        """Return the built-in loaders' inputs by node class, with this server's file names."""
+        found: dict[str, dict[str, str]] = {}
         missing: list[str] = []
-        for field, (node, name_input) in _MODEL_INPUTS.items():
+        for node, (name_input, files) in BUILTIN_MODELS.items():
             info = self._http.get(f"/object_info/{node}").json()
             names: list[str] = info[node]["input"]["required"][name_input][0]
             by_file = {_basename(n): n for n in names}
-            match = next((by_file[f] for f in MODEL_FILES[field] if f in by_file), None)
+            match = next((by_file[f] for f in files if f in by_file), None)
             if match is None:
-                missing.append(MODEL_FILES[field][0])
-            found[field] = match or ""
+                missing.append(files[0])
+            else:
+                found[node] = {name_input: match}
         if missing:
             raise ComfyError(f"models not on the ComfyUI server: {', '.join(missing)}")
-        return Models(**found)
+        return found
 
     def upload(self, file: Path) -> str:
         """Upload an input image and return the name ComfyUI stored it under."""

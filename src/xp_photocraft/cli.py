@@ -20,11 +20,12 @@ import click
 import httpx
 from pydantic import BaseModel
 
-from xp_photocraft import connection, registry, roundtrip, workflows
+from xp_photocraft import connection, registry, roundtrip
 from xp_photocraft.comfy import Comfy, ComfyError
 from xp_photocraft.config import (
     ACTIONS,
     APP_DIR,
+    BUILTIN_GRAPH,
     BUILTIN_WORKFLOW,
     CONNECT_TIMEOUT_S,
     CONNECTION_FILE,
@@ -163,8 +164,12 @@ def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: 
     if added and added.command:
         return Runner(added.command, root)
     comfy = Comfy(_server(server), api_key=os.environ.get(API_KEY_ENV, ""))
-    if added is None:  # the built-in workflow
-        return ComfyGraph(comfy, workflows.inpaint(comfy.find_models()))
+    if added is None:  # the built-in graph, its loaders pointed at this server's files
+        graph = registry.load_graph(Path(__file__).with_name(BUILTIN_GRAPH))
+        models = comfy.find_models()
+        for node in graph.values():
+            node["inputs"].update(models.get(node["class_type"], {}))
+        return ComfyGraph(comfy, graph)
     graph = registry.load_graph(_workflows_file().parent / added.graph)
     return ComfyGraph(comfy, graph, added.prompt)
 
@@ -327,11 +332,11 @@ def doctor(port: int, work: Path | None, server: str | None) -> None:
     checks = {"work-dir": "ok" if root.is_dir() else f"missing: {root}"}
     checks["photocraft-control"] = _check(lambda: Control(port, root / TOKEN_FILENAME).close())
     checks["comfyui"] = _check(comfy.ping)
-    checks["workflows"] = _check(lambda: registry.load(_workflows_file()))
-    if checks["workflows"] == "ok":
+    try:
         assigned = list(registry.assignment(registry.load(_workflows_file())).values())
-    else:
-        assigned = [BUILTIN_WORKFLOW]
+        checks["workflows"] = "ok"
+    except registry.WorkflowsError as e:
+        assigned, checks["workflows"] = [BUILTIN_WORKFLOW], str(e)
     if BUILTIN_WORKFLOW in assigned:  # your own graphs bring their own models
         checks["builtin-models"] = _check(comfy.find_models)
     ok = all(v == "ok" for v in checks.values())
