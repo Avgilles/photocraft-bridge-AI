@@ -1,13 +1,11 @@
 """Every tunable this project has, as plain module constants.
 
 This module never reads ``os.environ``. The ComfyUI URL is the saved connection
-(``connection.json``, set with ``xp-photocraft connect``); the control port and the work dir are
-CLI options with an environment variable each, declared where they are used (``cli.py``).
+(``connection.json``, set with ``xp-photocraft connect``); the data folder, the control port, the
+work dir and the comfy.org API key are read where they are used (``cli.py``).
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 # --- PhotoCraft control protocol ----------------------------------------------
 
@@ -21,14 +19,14 @@ CONTROL_TIMEOUT_S = 120.0
 # limits"), and a generation waits longer than that: reconnect before a request past this idle time.
 CONTROL_IDLE_RECONNECT_S = 20.0
 
-# The bridge's files live in ONE folder, granted to PhotoCraft as both automation
-# roots (--automation-read-root / --automation-write-root): PhotoCraft refuses any
-# path outside them, and paths sent over control are relative to them.
-WORK_SEGMENTS = ("xp-photocraft", "work")
-# The saved ComfyUI connection, beside the work dir (never in a repository).
-CONNECTION_SEGMENTS = ("xp-photocraft", "connection.json")
-# The user's workflows (external commands) and the one each action runs, beside it.
-WORKFLOWS_SEGMENTS = ("xp-photocraft", "workflows.json")
+# The bridge's data folder (under %LOCALAPPDATA%, $XDG_DATA_HOME or ~/.local/share) holds the
+# work dir, granted to PhotoCraft as both automation roots (--automation-read-root /
+# --automation-write-root: it refuses any path outside them, and paths sent over control are
+# relative to them), the saved connection and the user's workflows (never in a repository).
+APP_DIR = "xp-photocraft"
+WORK_DIR = "work"
+CONNECTION_FILE = "connection.json"
+WORKFLOWS_FILE = "workflows.json"
 TOKEN_FILENAME = "control.token"
 
 # --- the round trip -----------------------------------------------------------
@@ -56,12 +54,20 @@ COMFY_POLL_S = 0.5
 # covers a cold load behind a queue.
 COMFY_JOB_TIMEOUT_S = 600.0
 
-# Qwen Image Edit 2511 + the 4-step Lightning LoRA, by file name. Each is looked up in the
-# server's /object_info by name, so it may sit in any subfolder of its models folder.
-UNET = "qwen_image_edit_2511_int8_convrot.safetensors"
-CLIP = "qwen_2.5_vl_7b_fp8_scaled.safetensors"
-VAE = "qwen_image_vae.safetensors"
-LORA = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+# The built-in workflow: Qwen Image Edit 2511 + the 4-step Lightning LoRA, as ComfyUI's own
+# "Qwen Image Edit 2511" templates install them (the main one ships fp8mixed, the int8 one
+# int8_convrot), first match wins. Each is looked up in the server's /object_info by file name,
+# so it may sit in any subfolder of its models folder.
+MODEL_FILES = {
+    "unet": (
+        "qwen_image_edit_2511_fp8mixed.safetensors",
+        "qwen_image_edit_2511_int8_convrot.safetensors",
+        "qwen_image_edit_2511_bf16.safetensors",
+    ),
+    "clip": ("qwen_2.5_vl_7b_fp8_scaled.safetensors",),
+    "vae": ("qwen_image_vae.safetensors",),
+    "lora": ("Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",),
+}
 
 # Remove has no prompt of its own: it asks the edit model for the background.
 REMOVE_PROMPT = (
@@ -83,18 +89,3 @@ RUNNER_CONTRACT = "xp-photocraft/runner@1"
 REQUEST_FILE = "request.json"
 # Same budget as a ComfyUI job: a cloud model behind a queue can be slow too.
 RUNNER_TIMEOUT_S = 600.0
-
-
-def work_dir(local_app_data: Path) -> Path:
-    """Return the bridge's work dir under a ``%LOCALAPPDATA%``-like base."""
-    return local_app_data.joinpath(*WORK_SEGMENTS)
-
-
-def connection_file(local_app_data: Path) -> Path:
-    """Return the saved connection's file under a ``%LOCALAPPDATA%``-like base."""
-    return local_app_data.joinpath(*CONNECTION_SEGMENTS)
-
-
-def workflows_file(local_app_data: Path) -> Path:
-    """Return the user's workflows file under a ``%LOCALAPPDATA%``-like base."""
-    return local_app_data.joinpath(*WORKFLOWS_SEGMENTS)

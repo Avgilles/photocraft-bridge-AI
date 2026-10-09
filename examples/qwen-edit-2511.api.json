@@ -1,0 +1,237 @@
+{
+  "image": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "pc:image"
+    }
+  },
+  "mask": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "",
+      "channel": "red"
+    },
+    "_meta": {
+      "title": "pc:mask"
+    }
+  },
+  "scale": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "image",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 1.0,
+      "resolution_steps": 1
+    }
+  },
+  "grow": {
+    "class_type": "GrowMask",
+    "inputs": {
+      "mask": [
+        "mask",
+        0
+      ],
+      "expand": 6,
+      "tapered_corners": true
+    }
+  },
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "aura": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "model": [
+        "unet",
+        0
+      ],
+      "shift": 3.1
+    }
+  },
+  "norm": {
+    "class_type": "CFGNorm",
+    "inputs": {
+      "model": [
+        "aura",
+        0
+      ],
+      "strength": 1
+    }
+  },
+  "lora": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "norm",
+        0
+      ],
+      "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1
+    }
+  },
+  "pos": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": [
+        "clip",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ],
+      "image1": [
+        "scale",
+        0
+      ],
+      "prompt": ""
+    },
+    "_meta": {
+      "title": "pc:prompt"
+    }
+  },
+  "neg": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": [
+        "clip",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ],
+      "image1": [
+        "scale",
+        0
+      ],
+      "prompt": ""
+    }
+  },
+  "inpaint": {
+    "class_type": "InpaintModelConditioning",
+    "inputs": {
+      "positive": [
+        "pos",
+        0
+      ],
+      "negative": [
+        "neg",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ],
+      "pixels": [
+        "scale",
+        0
+      ],
+      "mask": [
+        "grow",
+        0
+      ],
+      "noise_mask": true
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "lora",
+        0
+      ],
+      "seed": 0,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "inpaint",
+        0
+      ],
+      "negative": [
+        "inpaint",
+        1
+      ],
+      "latent_image": [
+        "inpaint",
+        2
+      ],
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "pc:seed"
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "sampler",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ]
+    }
+  },
+  "composite": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "scale",
+        0
+      ],
+      "source": [
+        "decode",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "grow",
+        0
+      ]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "composite",
+        0
+      ],
+      "filename_prefix": "xp-photocraft/fill"
+    },
+    "_meta": {
+      "title": "pc:output"
+    }
+  }
+}

@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from xp_photocraft.config import COMFY_JOB_TIMEOUT_S, COMFY_POLL_S, COMFY_TIMEOUT_S
+from xp_photocraft.config import COMFY_JOB_TIMEOUT_S, COMFY_POLL_S, COMFY_TIMEOUT_S, MODEL_FILES
 from xp_photocraft.workflows import Models
 
 # Where each model's name list lives in /object_info: (node class, input name).
@@ -28,22 +28,29 @@ class ComfyError(RuntimeError):
 class Comfy:
     """A ComfyUI server reachable over HTTP: this PC, another PC on the LAN, or a tunnel."""
 
-    def __init__(self, base_url: str, timeout: float = COMFY_TIMEOUT_S) -> None:
+    def __init__(self, base_url: str, timeout: float = COMFY_TIMEOUT_S, api_key: str = "") -> None:
         # trust_env=False: an HTTP(S)_PROXY meant for the internet must not see this traffic.
         self._http = httpx.Client(base_url=base_url, trust_env=False, timeout=timeout)
+        # Partner nodes (Nano Banana, …) bill this comfy.org account; never logged, never printed.
+        self._extra = {"extra_data": {"api_key_comfy_org": api_key}} if api_key else {}
 
-    def find_models(self, wanted: Models) -> Models:
-        """Return ``wanted`` with each file name as the server lists it (any subfolder)."""
+    def ping(self) -> None:
+        """Raise unless a ComfyUI server answers (any models, any custom nodes)."""
+        if "system" not in self._http.get("/system_stats").json():
+            raise ComfyError("not a ComfyUI server")
+
+    def find_models(self) -> Models:
+        """Return the built-in workflow's models as the server lists them (first variant found)."""
         found: dict[str, str] = {}
         missing: list[str] = []
         for field, (node, name_input) in _MODEL_INPUTS.items():
             info = self._http.get(f"/object_info/{node}").json()
             names: list[str] = info[node]["input"]["required"][name_input][0]
-            file_name = getattr(wanted, field)
-            match = next((n for n in names if _basename(n) == file_name), None)
+            by_file = {_basename(n): n for n in names}
+            match = next((by_file[f] for f in MODEL_FILES[field] if f in by_file), None)
             if match is None:
-                missing.append(file_name)
-            found[field] = match or file_name
+                missing.append(MODEL_FILES[field][0])
+            found[field] = match or ""
         if missing:
             raise ComfyError(f"models not on the ComfyUI server: {', '.join(missing)}")
         return Models(**found)
@@ -55,13 +62,17 @@ class Comfy:
         response.raise_for_status()
         return str(response.json()["name"])
 
-    def run(self, graph: dict[str, Any]) -> bytes:
-        """Queue an API-format graph, wait for it, and return its first output image."""
-        queued = self._http.post("/prompt", json={"prompt": graph, "client_id": uuid.uuid4().hex})
+    def run(self, graph: dict[str, Any], output_node: str = "") -> bytes:
+        """Queue an API-format graph, wait for it, and return ``output_node``'s image.
+
+        Without ``output_node``: the first saved image (a preview is a fallback, not a result).
+        """
+        body = {"prompt": graph, "client_id": uuid.uuid4().hex, **self._extra}
+        queued = self._http.post("/prompt", json=body)
         if queued.status_code != 200:
             raise ComfyError(f"graph refused: {queued.text[:500]}")
         history = self._wait(str(queued.json()["prompt_id"]))
-        image = _first_image(history)
+        image = _pick_image(history["outputs"], output_node)
         view = self._http.get("/view", params=image)
         view.raise_for_status()
         return view.content
@@ -73,7 +84,7 @@ class Comfy:
                 self._http.get(f"/history/{prompt_id}").json().get(prompt_id)
             )
             if entry and entry.get("status", {}).get("status_str") == "error":
-                raise ComfyError(f"ComfyUI failed: {str(entry['status'].get('messages'))[:800]}")
+                raise ComfyError(f"ComfyUI failed: {_execution_error(entry['status'])}")
             if entry and entry.get("outputs"):
                 return entry
             time.sleep(COMFY_POLL_S)
@@ -85,12 +96,20 @@ def _basename(name: str) -> str:
     return name.replace("\\", "/").rsplit("/", 1)[-1]
 
 
-def _first_image(history: dict[str, Any]) -> dict[str, str]:
-    for output in history["outputs"].values():
-        for image in output.get("images", []):
-            return {
-                "filename": image["filename"],
-                "subfolder": image["subfolder"],
-                "type": image["type"],
-            }
-    raise ComfyError("the graph finished without an output image")
+def _execution_error(status: dict[str, Any]) -> str:
+    """The failing node and its message, on one line (the task bar shows one line)."""
+    for kind, data in status.get("messages", []):
+        if kind == "execution_error":
+            message = " ".join(str(data.get("exception_message", "")).split())
+            return f"{data.get('node_type')}: {message}"[:300]
+    return " ".join(str(status.get("messages")).split())[:300]
+
+
+def _pick_image(outputs: dict[str, Any], output_node: str) -> dict[str, str]:
+    images = outputs.get(output_node, {}).get("images", [])
+    if not images:  # saved images ("output") before previews ("temp"); sorted() is stable
+        everything = [image for output in outputs.values() for image in output.get("images", [])]
+        images = sorted(everything, key=lambda image: image.get("type") != "output")
+    if not images:
+        raise ComfyError("the graph finished without an output image")
+    return {key: images[0][key] for key in ("filename", "subfolder", "type")}

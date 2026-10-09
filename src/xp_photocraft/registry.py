@@ -1,34 +1,51 @@
 """The user's workflows and the one each action runs, from ``workflows.json``.
 
-The built-in ``qwen-edit`` is always there. The file declares external commands (each speaks
-``xp-photocraft/runner@1``, see ``engines``) and assigns one workflow per action::
+The built-in ``qwen-edit`` is always there. The file adds workflows — a ComfyUI graph exported
+with *Export (API)* whose nodes carry ``pc:*`` titles (see ``engines.ComfyGraph``), run on the
+saved connection; or an external command speaking ``xp-photocraft/runner@1`` — and assigns one
+workflow per action::
 
     {
-      "workflows": {"my-model": {"label": "My model", "command": ["python", "C:/tools/run.py"]}},
-      "assign": {"fill": "my-model"}
+      "workflows": {
+        "flux-fill": {"label": "Flux Fill", "graph": "flux_fill_api.json"},
+        "my-cloud": {"label": "My cloud model", "command": ["python", "C:/tools/run.py"]}
+      },
+      "assign": {"fill": "flux-fill"}
     }
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from xp_photocraft.config import ACTIONS, BUILTIN_LABEL, BUILTIN_WORKFLOW
 
 
 class Workflow(BaseModel):
-    """An external workflow: a label for the UI and the command that runs it."""
+    """An added workflow: a ComfyUI graph file, or an external command."""
 
     model_config = ConfigDict(extra="forbid")
 
     label: str
-    command: list[str] = Field(min_length=1)
+    # An API-format graph; a relative path is relative to workflows.json.
+    graph: str = ""
+    command: list[str] = []
+    # What the graph's pc:prompt node receives; "{prompt}" is the user's prompt.
+    prompt: str = "{prompt}"
+
+    @model_validator(mode="after")
+    def _graph_or_command(self) -> Workflow:
+        if bool(self.graph) == bool(self.command):
+            raise ValueError("give a graph or a command (one of them)")
+        return self
 
 
 class Registry(BaseModel):
-    """The declared workflows and the action → workflow assignment."""
+    """The added workflows and the action → workflow assignment."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,7 +54,7 @@ class Registry(BaseModel):
 
 
 class WorkflowsError(ValueError):
-    """``workflows.json`` is unreadable or names a workflow that does not exist."""
+    """``workflows.json`` or a graph it names is unreadable, or names an unknown workflow."""
 
 
 def load(path: Path) -> Registry:
@@ -53,6 +70,19 @@ def load(path: Path) -> Registry:
         first = e.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
         raise WorkflowsError(f"{path.name}: {where + ': ' if where else ''}{first['msg']}") from e
+
+
+def load_graph(path: Path) -> dict[str, Any]:
+    """Return the API-format graph in ``path`` (relative paths are resolved by the caller)."""
+    try:
+        graph = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as e:
+        raise WorkflowsError(f"cannot read {path.name}: {e.strerror}") from e
+    except ValueError as e:
+        raise WorkflowsError(f"{path.name} is not JSON") from e
+    if not isinstance(graph, dict) or isinstance(graph.get("nodes"), list):
+        raise WorkflowsError(f"{path.name} is not an API workflow: save it with Export (API)")
+    return graph
 
 
 def labels(registry: Registry) -> dict[str, str]:
@@ -78,5 +108,6 @@ def assign(path: Path, action: str, workflow_id: str) -> Registry:
     registry = load(path)
     registry.assign[action] = pick(registry, action, workflow_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(registry.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    # exclude_defaults: the file keeps the shape the user wrote.
+    path.write_text(registry.model_dump_json(indent=2, exclude_defaults=True) + "\n", "utf-8")
     return registry

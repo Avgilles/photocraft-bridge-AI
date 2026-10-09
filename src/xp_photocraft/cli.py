@@ -20,22 +20,25 @@ import click
 import httpx
 from pydantic import BaseModel
 
-from xp_photocraft import connection, registry, roundtrip
+from xp_photocraft import connection, registry, roundtrip, workflows
 from xp_photocraft.comfy import Comfy, ComfyError
 from xp_photocraft.config import (
     ACTIONS,
+    APP_DIR,
     BUILTIN_WORKFLOW,
     CONNECT_TIMEOUT_S,
+    CONNECTION_FILE,
     DEFAULT_CONTROL_PORT,
     TOKEN_FILENAME,
-    connection_file,
-    work_dir,
-    workflows_file,
+    WORK_DIR,
+    WORKFLOWS_FILE,
 )
 from xp_photocraft.control import Control, ControlError
-from xp_photocraft.engines import Engine, EngineError, QwenComfy, Runner
+from xp_photocraft.engines import ComfyGraph, Engine, EngineError, Runner
 from xp_photocraft.placeholder import PlacementError
-from xp_photocraft.workflows import Models
+
+# A comfy.org API key, for graphs with partner nodes (Nano Banana, ...) on your own ComfyUI.
+API_KEY_ENV = "XP_PHOTOCRAFT_COMFY_API_KEY"
 
 
 class FillResult(BaseModel):
@@ -53,7 +56,7 @@ class FillResult(BaseModel):
 
 
 class ConnectResult(BaseModel):
-    """``connect@1``: whether the server answered with every model, and was saved."""
+    """``connect@1``: whether a ComfyUI server answered, and was saved."""
 
     contract: str = "connect@1"
     ok: bool
@@ -75,6 +78,7 @@ class WorkflowsResult(BaseModel):
     ok: bool
     workflows: list[WorkflowChoice] = []
     assign: dict[str, str] = {}
+    server: str = ""
     error: str = ""
 
 
@@ -86,16 +90,22 @@ class DoctorResult(BaseModel):
     checks: dict[str, str]
 
 
-def _local_app_data() -> Path:
-    return Path(os.environ.get("LOCALAPPDATA", Path.home()))
+def _data_dir() -> Path:
+    # %LOCALAPPDATA% on Windows; elsewhere the XDG data folder (~/.local/share, macOS included).
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME")
+    return (Path(base) if base else Path.home() / ".local" / "share") / APP_DIR
 
 
 def _default_work() -> Path:
-    return work_dir(_local_app_data())
+    return _data_dir() / WORK_DIR
+
+
+def _workflows_file() -> Path:
+    return _data_dir() / WORKFLOWS_FILE
 
 
 def _server(server: str | None) -> str:
-    return server or connection.load(connection_file(_local_app_data()))
+    return server or connection.load(_data_dir() / CONNECTION_FILE)
 
 
 def _emit(contract: BaseModel) -> None:
@@ -148,9 +158,15 @@ Action = Callable[[Control, Engine, int, Path], roundtrip.Rect]
 
 
 def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: Path) -> Engine:
-    if workflow_id == BUILTIN_WORKFLOW:
-        return QwenComfy(Comfy(_server(server)))
-    return Runner(reg.workflows[workflow_id].command, root)
+    """Build the workflow's engine; a ComfyUI one checks its models and graph up front."""
+    added = reg.workflows.get(workflow_id)
+    if added and added.command:
+        return Runner(added.command, root)
+    comfy = Comfy(_server(server), api_key=os.environ.get(API_KEY_ENV, ""))
+    if added is None:  # the built-in workflow
+        return ComfyGraph(comfy, workflows.inpaint(comfy.find_models()))
+    graph = registry.load_graph(_workflows_file().parent / added.graph)
+    return ComfyGraph(comfy, graph, added.prompt)
 
 
 def _run(
@@ -167,7 +183,7 @@ def _run(
     seed = random.randrange(2**31) if seed is None else seed
     started = time.perf_counter()
     try:
-        reg = registry.load(workflows_file(_local_app_data()))
+        reg = registry.load(_workflows_file())
         workflow = registry.pick(reg, mode, workflow)
         engine = _engine(reg, workflow, server, root)
         rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root)
@@ -243,16 +259,19 @@ def remove(
 @cli.command()
 @click.argument("url")
 def connect(url: str) -> None:
-    """Test a ComfyUI server (reachable, every model present) and save it as the connection."""
+    """Test a ComfyUI server (any models, any nodes) and save it as the connection."""
     try:
         server = connection.normalize(url)
-        Comfy(server, timeout=CONNECT_TIMEOUT_S).find_models(Models())
+        comfy = Comfy(server, timeout=CONNECT_TIMEOUT_S)
+        comfy.ping()
     except (connection.InvalidServerError, ComfyError, httpx.HTTPError, KeyError, ValueError) as e:
         click.echo(f"ComfyUI not connected: {_brief(e)}", err=True)
         _emit(ConnectResult(ok=False, error=_brief(e)))
         sys.exit(1)
-    connection.save(connection_file(_local_app_data()), server)
-    click.echo("ComfyUI connected - models OK", err=True)
+    connection.save(_data_dir() / CONNECTION_FILE, server)
+    # Your own graphs may need other models: the built-in ones are reported, not required.
+    builtin = "OK" if _check(comfy.find_models) == "ok" else "missing (see doctor)"
+    click.echo(f"ComfyUI connected - built-in Qwen models {builtin}", err=True)
     _emit(ConnectResult(ok=True, server=server))
 
 
@@ -281,7 +300,7 @@ def assign(action: str, workflow: str) -> None:
 
 def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
     try:
-        reg = get(workflows_file(_local_app_data()))
+        reg = get(_workflows_file())
     except registry.WorkflowsError as e:
         click.echo(f"xp-photocraft workflows: {e}", err=True)
         _emit(WorkflowsResult(ok=False, error=str(e)))
@@ -294,6 +313,7 @@ def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
             ok=True,
             workflows=[WorkflowChoice(id=k, label=v) for k, v in labels.items()],
             assign=assigned,
+            server=_server(None),
         )
     )
 
@@ -301,25 +321,35 @@ def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
 @cli.command()
 @_with_common
 def doctor(port: int, work: Path | None, server: str | None) -> None:
-    """Check the PhotoCraft control link, the ComfyUI server and its models."""
+    """Check the PhotoCraft control link, the ComfyUI server, the workflows and their models."""
     root = work or _default_work()
-    server = _server(server)
+    comfy = Comfy(_server(server))
     checks = {"work-dir": "ok" if root.is_dir() else f"missing: {root}"}
-    try:
-        Control(port, root / TOKEN_FILENAME).close()
-        checks["photocraft-control"] = "ok"
-    except ControlError as e:
-        checks["photocraft-control"] = str(e)
-    try:
-        Comfy(server).find_models(Models())
-        checks["comfy-models"] = "ok"
-    except (ComfyError, httpx.HTTPError, KeyError, ValueError) as e:
-        checks["comfy-models"] = f"{server}: {e}"
+    checks["photocraft-control"] = _check(lambda: Control(port, root / TOKEN_FILENAME).close())
+    checks["comfyui"] = _check(comfy.ping)
+    checks["workflows"] = _check(lambda: registry.load(_workflows_file()))
+    if checks["workflows"] == "ok":
+        assigned = list(registry.assignment(registry.load(_workflows_file())).values())
+    else:
+        assigned = [BUILTIN_WORKFLOW]
+    if BUILTIN_WORKFLOW in assigned:  # your own graphs bring their own models
+        checks["builtin-models"] = _check(comfy.find_models)
     ok = all(v == "ok" for v in checks.values())
     for name, state in checks.items():
         click.echo(f"{'ok ' if state == 'ok' else 'FAIL'} {name}: {state}", err=True)
     _emit(DoctorResult(ok=ok, checks=checks))
     sys.exit(0 if ok else 1)
+
+
+def _check(probe: Callable[[], object]) -> str:
+    """Run one check: "ok", or what went wrong."""
+    try:
+        probe()
+    except (ControlError, ComfyError, registry.WorkflowsError, httpx.HTTPError, KeyError) as e:
+        return str(e)
+    except ValueError:
+        return "not a ComfyUI server"
+    return "ok"
 
 
 def main() -> None:

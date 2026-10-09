@@ -1,0 +1,24 @@
+{
+  "1": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "pc:image"}},
+  "2": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "pc:mask"}},
+  "3": {
+    "class_type": "GeminiNanoBanana2V2",
+    "inputs": {
+      "prompt": "",
+      "model": "Gemini Nano Banana 2.1",
+      "seed": 0,
+      "response_modalities": "IMAGE",
+      "model.aspect_ratio": "auto",
+      "model.resolution": "1K",
+      "model.thinking_level": "MEDIUM",
+      "model.images.image_1": ["1", 0],
+      "model.images.image_2": ["2", 0]
+    },
+    "_meta": {"title": "pc:prompt"}
+  },
+  "4": {
+    "class_type": "SaveImage",
+    "inputs": {"images": ["3", 0], "filename_prefix": "xp-photocraft/nano-banana"},
+    "_meta": {"title": "pc:output"}
+  }
+}

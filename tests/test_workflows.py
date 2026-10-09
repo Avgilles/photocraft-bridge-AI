@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from xp_photocraft import cli, registry
-from xp_photocraft.engines import EngineError, QwenComfy, Runner
+from xp_photocraft import cli, registry, workflows
+from xp_photocraft.engines import ComfyGraph, EngineError, Runner
 
 # A runner@1 command: writes a 4x4 PNG beside the request, or fails like a real one would.
 _FAKE_RUNNER = """
@@ -29,8 +29,11 @@ print(json.dumps({"image": "out.png"}))
 
 def _write_registry(path: Path, assign: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    workflows = {"banana": {"label": "Banana", "command": ["python", "run.py"]}}
-    path.write_text(json.dumps({"workflows": workflows, "assign": assign}), encoding="utf-8")
+    added = {
+        "banana": {"label": "Banana", "command": ["python", "run.py"]},
+        "flux": {"label": "Flux", "graph": "flux_api.json"},
+    }
+    path.write_text(json.dumps({"workflows": added, "assign": assign}), encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -58,18 +61,44 @@ def test_pick_rejects_an_unknown_workflow(tmp_path: Path) -> None:
 
 def test_load_reports_a_broken_file_on_one_line(tmp_path: Path) -> None:
     path = tmp_path / "workflows.json"
-    path.write_text('{"workflows": {"x": {"label": "X", "command": []}}}', encoding="utf-8")
+    path.write_text('{"workflows": {"x": {"label": "X", "comand": ["run"]}}}', encoding="utf-8")
     with pytest.raises(registry.WorkflowsError) as error:
         registry.load(path)
-    assert "\n" not in str(error.value) and "workflows.x.command" in str(error.value)
+    assert "\n" not in str(error.value) and "workflows.x.comand" in str(error.value)
 
 
-def test_engine_is_a_runner_for_a_declared_workflow(tmp_path: Path) -> None:
-    path = tmp_path / "workflows.json"
+def test_engine_follows_the_workflow_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "Comfy", _FakeComfy)
+    path = tmp_path / "xp-photocraft" / "workflows.json"
     _write_registry(path, {})
+    (path.parent / "flux_api.json").write_text(json.dumps(_GRAPH), encoding="utf-8")
     reg = registry.load(path)
+
     assert isinstance(cli._engine(reg, "banana", None, tmp_path), Runner)
-    assert isinstance(cli._engine(reg, "qwen-edit", "http://127.0.0.1:1", tmp_path), QwenComfy)
+    assert isinstance(cli._engine(reg, "flux", None, tmp_path), ComfyGraph)
+    assert isinstance(cli._engine(reg, "qwen-edit", None, tmp_path), ComfyGraph)
+
+
+@pytest.mark.parametrize(
+    ("entry", "error"),
+    [
+        ({"label": "X"}, "graph or a command"),
+        ({"label": "X", "graph": "a.json", "command": ["run"]}, "graph or a command"),
+    ],
+)
+def test_a_workflow_is_a_graph_or_a_command(tmp_path: Path, entry: dict, error: str) -> None:
+    path = tmp_path / "workflows.json"
+    path.write_text(json.dumps({"workflows": {"x": entry}}), encoding="utf-8")
+    with pytest.raises(registry.WorkflowsError, match=error):
+        registry.load(path)
+
+
+def test_a_ui_workflow_is_refused_with_the_fix(tmp_path: Path) -> None:
+    path = tmp_path / "ui.json"
+    path.write_text(json.dumps({"nodes": [], "links": []}), encoding="utf-8")
+    with pytest.raises(registry.WorkflowsError, match="Export \\(API\\)"):
+        registry.load_graph(path)
 
 
 def test_cli_assign_saves_and_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,7 +113,7 @@ def test_cli_assign_saves_and_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     assert (assigned.exit_code, refused.exit_code) == (0, 1)
     assert listed["assign"] == {"fill": "banana", "remove": "qwen-edit"}
-    assert [w["id"] for w in listed["workflows"]] == ["qwen-edit", "banana"]
+    assert [w["id"] for w in listed["workflows"]] == ["qwen-edit", "banana", "flux"]
     assert "run.py" not in stdout  # commands (private paths) never reach the UI
 
 
@@ -120,21 +149,57 @@ def test_runner_failure_surfaces_the_last_stderr_line(tmp_path: Path) -> None:
 
 
 class _FakeComfy:
-    graph: dict[str, Any] = {}
+    def __init__(self, base_url: str = "", timeout: float = 0, api_key: str = "") -> None:
+        self.graph: dict[str, Any] = {}
+        self.output = "unset"
 
-    def find_models(self, wanted: object) -> object:
-        return wanted
+    def find_models(self) -> workflows.Models:
+        return workflows.Models("unet", "clip", "vae", "lora")
 
     def upload(self, file: Path) -> str:
-        return file.name
+        return f"up_{file.name}"
 
-    def run(self, graph: dict[str, Any]) -> bytes:
-        self.graph = graph
+    def run(self, graph: dict[str, Any], output_node: str = "") -> bytes:
+        self.graph, self.output = graph, output_node
         return b"png"
 
 
-def test_qwen_engine_sends_the_prompt_and_seed_in_the_graph(tmp_path: Path) -> None:
+def _node(class_type: str, inputs: dict[str, Any], title: str) -> dict[str, Any]:
+    return {"class_type": class_type, "inputs": inputs, "_meta": {"title": title}}
+
+
+# A user graph: CLIPTextEncode ("text"), KSampler-style "noise_seed", a preview and a save.
+_GRAPH = {
+    "1": _node("LoadImage", {"image": "x.png"}, "pc:image"),
+    "2": _node("LoadImage", {"image": "y.png"}, "pc:mask"),
+    "3": _node("CLIPTextEncode", {"text": "", "clip": ["9", 0]}, "pc:prompt"),
+    "4": _node("SamplerCustomAdvanced", {"noise_seed": 0}, "pc:seed"),
+    "5": _node("PreviewImage", {"images": ["6", 0]}, "Preview Image"),
+    "6": _node("SaveImage", {"images": ["7", 0]}, "pc:output"),
+}
+
+
+def test_graph_engine_fills_the_tagged_nodes(tmp_path: Path) -> None:
     comfy = _FakeComfy()
-    QwenComfy(comfy).generate(tmp_path / "r.png", tmp_path / "m.png", "a plate", 7, "fill")  # type: ignore[arg-type]
+    engine = ComfyGraph(comfy, _GRAPH, "Image 2 is a mask. {prompt}")  # type: ignore[arg-type]
+
+    engine.generate(tmp_path / "region.png", tmp_path / "mask.png", "a {red} kite", 7, "fill")
+
+    inputs = {key: node["inputs"] for key, node in comfy.graph.items()}
+    assert (inputs["1"]["image"], inputs["2"]["image"]) == ("up_region.png", "up_mask.png")
+    assert inputs["3"]["text"] == "Image 2 is a mask. a {red} kite"  # braces in a prompt are text
+    assert inputs["4"]["noise_seed"] == 7 and comfy.output == "6"
+    assert _GRAPH["3"]["inputs"]["text"] == ""  # the loaded graph is left untouched
+
+
+def test_builtin_graph_is_a_tagged_graph(tmp_path: Path) -> None:
+    comfy = _FakeComfy()
+    graph = workflows.inpaint(comfy.find_models())
+    ComfyGraph(comfy, graph).generate(tmp_path / "r.png", tmp_path / "m.png", "a plate", 7, "fill")  # type: ignore[arg-type]
     assert comfy.graph["pos"]["inputs"]["prompt"] == "a plate"
     assert comfy.graph["sampler"]["inputs"]["seed"] == 7
+
+
+def test_an_untagged_graph_is_refused_before_anything_runs() -> None:
+    with pytest.raises(EngineError, match="pc:image or pc:prompt"):
+        ComfyGraph(_FakeComfy(), {"1": _node("SaveImage", {}, "Save")})  # type: ignore[arg-type]

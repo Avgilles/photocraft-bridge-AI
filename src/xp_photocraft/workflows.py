@@ -1,6 +1,7 @@
-"""API-format ComfyUI graphs; node titles carry the ``pc:*`` tags (image, mask, prompt, seed).
+"""The built-in workflow, as an API-format ComfyUI graph tagged like any user graph.
 
-The inpaint graph uses ComfyUI core nodes only. The mask is loaded on its own
+Node titles carry the ``pc:*`` tags (image, mask, prompt, seed) the engine fills in
+(``engines.ComfyGraph``). ComfyUI core nodes only; the mask is loaded on its own
 (``LoadImageMask``, red channel, white = repaint).
 """
 
@@ -9,28 +10,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from xp_photocraft.config import CLIP, LORA, OUTPUT_PREFIX, UNET, VAE
+from xp_photocraft.config import OUTPUT_PREFIX
 
 
 @dataclass(frozen=True)
 class Models:
     """Model names as the ComfyUI server lists them (subfolder included)."""
 
-    unet: str = UNET
-    clip: str = CLIP
-    vae: str = VAE
-    lora: str = LORA
+    unet: str
+    clip: str
+    vae: str
+    lora: str
 
 
-def inpaint(image: str, mask: str, prompt: str, seed: int, models: Models) -> dict[str, Any]:
-    """Qwen Image Edit 2511 inpaint of ``mask`` inside ``image``, composited over it."""
+def inpaint(models: Models) -> dict[str, Any]:
+    """Qwen Image Edit 2511 inpaint of the ``pc:mask`` area of ``pc:image``, composited over it."""
 
     def encode(text: str) -> dict[str, Any]:
         return {"clip": ["clip", 0], "vae": ["vae", 0], "image1": ["scale", 0], "prompt": text}
 
     return {
-        "image": _node("LoadImage", {"image": image}, "pc:image"),
-        "mask": _node("LoadImageMask", {"image": mask, "channel": "red"}, "pc:mask"),
+        "image": _node("LoadImage", {"image": ""}, "pc:image"),
+        "mask": _node("LoadImageMask", {"image": "", "channel": "red"}, "pc:mask"),
         "scale": _node(
             "ImageScaleToTotalPixels",
             {
@@ -52,7 +53,7 @@ def inpaint(image: str, mask: str, prompt: str, seed: int, models: Models) -> di
             "LoraLoaderModelOnly",
             {"model": ["norm", 0], "lora_name": models.lora, "strength_model": 1},
         ),
-        "pos": _node("TextEncodeQwenImageEditPlus", encode(prompt), "pc:prompt"),
+        "pos": _node("TextEncodeQwenImageEditPlus", encode(""), "pc:prompt"),
         "neg": _node("TextEncodeQwenImageEditPlus", encode("")),
         "inpaint": _node(
             "InpaintModelConditioning",
@@ -69,7 +70,7 @@ def inpaint(image: str, mask: str, prompt: str, seed: int, models: Models) -> di
             "KSampler",
             {
                 "model": ["lora", 0],
-                "seed": seed,
+                "seed": 0,
                 "steps": 4,
                 "cfg": 1,
                 "sampler_name": "euler",

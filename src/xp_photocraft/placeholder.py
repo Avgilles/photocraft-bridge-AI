@@ -41,8 +41,9 @@ class Placeholder:
 
     document: str
     layer: int
-    # The artist's layer when it was added (-1: none), to tell whether they moved on meanwhile.
-    launch_layer: int = -1
+    # The document's revision once it was added: any edit, layer or selection change moves it
+    # (switching documents does not), which tells whether the artist worked there meanwhile.
+    revision: int = 0
 
 
 def draw_card(
@@ -91,8 +92,7 @@ def add(pc: Control, card: Path, layer_name: str) -> Placeholder:
         pc.cmd("channel.delete", {"channel": SELECTION_CHANNEL})
     if doc.get("activeLayer") is not None:
         pc.cmd("layer.select", {"layer": doc["activeLayer"]})
-    launch_layer = doc.get("activeLayer")
-    return Placeholder(str(doc["name"]), layer, -1 if launch_layer is None else int(launch_layer))
+    return Placeholder(str(doc["name"]), layer, int(pc.cmd("document.inspect")["revision"]))
 
 
 def place(pc: Control, placeholder: Placeholder, layer_name: str) -> None:
@@ -155,8 +155,9 @@ def _restore(
     else:
         pc.cmd("select.deselect")
     # Like Photoshop the result stays selected, so the next one stacks above it; unless the
-    # artist moved to another layer meanwhile, which they get back.
-    if before.get("activeLayer") not in (None, placeholder.layer, placeholder.launch_layer):
+    # artist worked in this document meanwhile: they keep the layer they were on.
+    worked = before["revision"] != placeholder.revision
+    if worked and before.get("activeLayer") not in (None, placeholder.layer):
         pc.cmd("layer.select", {"layer": before["activeLayer"]})
     pc.cmd("document.activate", {"document": artist_doc})
 

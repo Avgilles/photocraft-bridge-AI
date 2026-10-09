@@ -55,7 +55,11 @@ class FakeControl:
                 "height": 1893,
                 "layers": [{"id": i} for i in doc["layers"]],
                 "activeLayer": doc["active"],
+                "revision": doc.get("revision", 0),
             }
+        # Like PhotoCraft: edits, layer and selection changes move the revision; switching does not.
+        if command.split(".")[0] in ("layer", "select", "edit", "channel"):
+            doc["revision"] = doc.get("revision", 0) + 1
         if command == "image.duplicate":
             self._open(p["name"], selection=doc["selection"])
         elif command == "file.close":
@@ -161,6 +165,17 @@ def test_an_artist_on_another_layer_gets_it_back(tmp_path: Path) -> None:
     poster = _poster(pc)
     assert len(poster["layers"]) == 3 and not poster["selection"]
     assert poster["active"] == painted[0]
+
+
+def test_an_artist_painting_on_their_layer_keeps_it(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    roundtrip.fill_selection(
+        pc, FakeEngine(lambda: pc.cmd("edit.fill", {"contents": "white"})), "x", 1, tmp_path, "L"
+    )  # type: ignore[arg-type]
+
+    poster = _poster(pc)
+    assert poster["active"] == 2 and poster["layers"][1] == 2  # result above, their layer active
 
 
 def test_deleting_the_placeholder_cancels_the_result(tmp_path: Path) -> None:
