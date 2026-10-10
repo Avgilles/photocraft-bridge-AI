@@ -14,6 +14,8 @@ set "ROOT=%~1"
 if "%ROOT%"=="" set "ROOT=%USERPROFILE%\ComfyUI-xp"
 if "%XP_QWEN_VARIANT%"=="" set "XP_QWEN_VARIANT=fp8mixed"
 set "UV=%USERPROFILE%\.local\bin\uv.exe"
+rem The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.
+set "UV_HTTP_TIMEOUT=600"
 
 echo.
 echo  ComfyUI for xp-photocraft  -^>  %ROOT%
@@ -46,7 +48,10 @@ set "CUDA=cu130"
 for /f %%v in ('powershell -NoProfile -Command "try { (nvidia-smi | Select-String 'CUDA Version: (\d+)').Matches[0].Groups[1].Value } catch { 13 }"') do if %%v LSS 13 set "CUDA=cu128"
 echo  [3/5] Python environment and PyTorch %CUDA% ^(about 3 GB^) ...
 if not exist "%ROOT%\ComfyUI\.venv\Scripts\python.exe" "%UV%" venv --python 3.12 "%ROOT%\ComfyUI\.venv" || goto :fail
-"%UV%" pip install --python "%ROOT%\ComfyUI\.venv\Scripts\python.exe" torch torchvision torchaudio --index-url https://download.pytorch.org/whl/%CUDA% || goto :fail
+rem A torch built for another CUDA (same version number) would be kept as is: reinstall it then.
+set "REINSTALL="
+"%ROOT%\ComfyUI\.venv\Scripts\python.exe" -c "import torch, sys; sys.exit(0 if (torch.version.cuda or '').startswith('%CUDA:~2,2%') else 1)" >nul 2>nul || set "REINSTALL=--reinstall-package torch --reinstall-package torchvision --reinstall-package torchaudio"
+"%UV%" pip install --python "%ROOT%\ComfyUI\.venv\Scripts\python.exe" %REINSTALL% torch torchvision torchaudio --index-url https://download.pytorch.org/whl/%CUDA% || goto :fail
 "%UV%" pip install --python "%ROOT%\ComfyUI\.venv\Scripts\python.exe" -r "%ROOT%\ComfyUI\requirements.txt" || goto :fail
 
 rem --- Models of the built-in workflow (the files ComfyUI's own Qwen Image Edit 2511 template uses) -

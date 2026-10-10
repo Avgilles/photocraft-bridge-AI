@@ -12,6 +12,8 @@ set -eu
 root="${1:-$HOME/ComfyUI-xp}"
 variant="${XP_QWEN_VARIANT:-fp8mixed}"
 uv="$HOME/.local/bin/uv"
+# The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.
+export UV_HTTP_TIMEOUT=600
 
 echo
 echo " ComfyUI for xp-photocraft  ->  $root"
@@ -42,7 +44,12 @@ driver_cuda="$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9]+' || ech
 [ "${driver_cuda:-13}" -lt 13 ] && cuda=cu128
 echo " [3/5] Python environment and PyTorch $cuda (about 3 GB) ..."
 [ -x "$root/ComfyUI/.venv/bin/python" ] || "$uv" venv --python 3.12 "$root/ComfyUI/.venv"
-"$uv" pip install --python "$root/ComfyUI/.venv/bin/python" torch torchvision torchaudio --index-url "https://download.pytorch.org/whl/$cuda"
+# A torch built for another CUDA (same version number) would be kept as is: reinstall it then.
+reinstall=""
+"$root/ComfyUI/.venv/bin/python" -c "import torch, sys; sys.exit(0 if (torch.version.cuda or '').startswith('${cuda:2:2}') else 1)" >/dev/null 2>&1 \
+  || reinstall="--reinstall-package torch --reinstall-package torchvision --reinstall-package torchaudio"
+# shellcheck disable=SC2086
+"$uv" pip install --python "$root/ComfyUI/.venv/bin/python" $reinstall torch torchvision torchaudio --index-url "https://download.pytorch.org/whl/$cuda"
 "$uv" pip install --python "$root/ComfyUI/.venv/bin/python" -r "$root/ComfyUI/requirements.txt"
 
 get() { # <models subfolder> <file name> <url>
