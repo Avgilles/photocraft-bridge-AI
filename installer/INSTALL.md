@@ -117,6 +117,6 @@ Il vérifie, ligne par ligne : le dossier de travail, la liaison avec PhotoCraft
 
 ## 8. Désinstaller
 
-Supprimez le dossier (pont, `data\`, `ComfyUI-xp\`) et retirez-le de votre PATH utilisateur
-(Paramètres ▸ Variables d'environnement). Linux : supprimez aussi les deux liens dans `~/.local/bin`.
-Seul `uv` reste, dans `%USERPROFILE%\.local\bin` (Linux : `~/.local/bin/uv`).
+Supprimez le dossier (pont, `data\`, `ComfyUI-xp\` avec son `uv`, son Python et ses modèles) et
+retirez-le de votre PATH utilisateur (Paramètres ▸ Variables d'environnement). Linux : supprimez
+aussi les deux liens dans `~/.local/bin`. Rien d'autre n'a été écrit sur la machine.

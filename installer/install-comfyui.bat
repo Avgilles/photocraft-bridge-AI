@@ -13,7 +13,11 @@ setlocal
 set "ROOT=%~1"
 if "%ROOT%"=="" set "ROOT=%~dp0ComfyUI-xp"
 if "%XP_QWEN_VARIANT%"=="" set "XP_QWEN_VARIANT=fp8mixed"
-set "UV=%USERPROFILE%\.local\bin\uv.exe"
+rem uv, its Python and its downloads live inside the folder too: nothing lands in your profile.
+set "UV=%ROOT%\uv\uv.exe"
+set "UV_UNMANAGED_INSTALL=%ROOT%\uv"
+set "UV_PYTHON_INSTALL_DIR=%ROOT%\uv\python"
+set "UV_NO_CACHE=1"
 rem The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.
 set "UV_HTTP_TIMEOUT=600"
 
@@ -23,6 +27,7 @@ echo  ---------------------------------------------------------------
 where nvidia-smi >nul 2>nul || echo  WARNING: nvidia-smi not found. ComfyUI needs an NVIDIA GPU with its driver installed.
 
 rem --- uv: one tool that brings Python and installs packages, no admin rights ---------------------
+mkdir "%ROOT%" 2>nul
 if not exist "%UV%" (
     echo  [1/5] Installing uv ...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex" || goto :fail

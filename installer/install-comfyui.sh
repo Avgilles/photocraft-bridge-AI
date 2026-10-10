@@ -11,7 +11,9 @@
 set -eu
 root="${1:-$(cd "$(dirname "$0")" && pwd)/ComfyUI-xp}"
 variant="${XP_QWEN_VARIANT:-fp8mixed}"
-uv="$HOME/.local/bin/uv"
+# uv, its Python and its downloads live inside the folder too: nothing lands in your profile.
+uv="$root/uv/uv"
+export UV_UNMANAGED_INSTALL="$root/uv" UV_PYTHON_INSTALL_DIR="$root/uv/python" UV_NO_CACHE=1
 # The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.
 export UV_HTTP_TIMEOUT=600
 
@@ -20,6 +22,7 @@ echo " ComfyUI for xp-photocraft  ->  $root"
 echo " ---------------------------------------------------------------"
 command -v nvidia-smi >/dev/null || echo " WARNING: nvidia-smi not found. ComfyUI needs an NVIDIA GPU with its driver installed."
 
+mkdir -p "$root"
 if [ ! -x "$uv" ]; then
   echo " [1/5] Installing uv ..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
