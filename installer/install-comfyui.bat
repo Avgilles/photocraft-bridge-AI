@@ -17,6 +17,7 @@ rem uv, its Python and its downloads live inside the folder too: nothing lands i
 set "UV=%ROOT%\uv\uv.exe"
 set "UV_UNMANAGED_INSTALL=%ROOT%\uv"
 set "UV_PYTHON_INSTALL_DIR=%ROOT%\uv\python"
+set "UV_MANAGED_PYTHON=1"
 set "UV_NO_CACHE=1"
 rem The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.
 set "UV_HTTP_TIMEOUT=600"
