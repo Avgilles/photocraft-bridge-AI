@@ -235,3 +235,17 @@ def test_data_dir_is_beside_a_portable_executable(
     assert cli._data_dir() == tmp_path / "appdata" / "xp-photocraft"  # no marker: the user's folder
     (exe.parent / "portable.txt").write_text("")
     assert cli._data_dir() == exe.parent / "data"
+
+
+def test_api_key_comes_from_the_environment_or_the_data_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delenv(cli.API_KEY_ENV, raising=False)
+    assert cli._api_key() == ""
+    data = tmp_path / "xp-photocraft"
+    data.mkdir()
+    (data / "comfy-api-key.txt").write_text("file-key  \n", encoding="utf-8")
+    assert cli._api_key() == "file-key"
+    monkeypatch.setenv(cli.API_KEY_ENV, "env-key")
+    assert cli._api_key() == "env-key"  # the environment wins

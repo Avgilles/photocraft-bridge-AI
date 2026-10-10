@@ -91,7 +91,7 @@ folder), for every command and for the fork's XP menu. Until one is saved, Comfy
 | ComfyUI URL | `connect` / `--server` | — | saved connection, else `http://127.0.0.1:8188` |
 | PhotoCraft control port | `--port` | `PHOTOCRAFT_CONTROL_PORT` | `7878` |
 | Shared work folder | `--work` | `XP_PHOTOCRAFT_WORK` | `<data folder>/work` |
-| comfy.org API key (partner nodes) | — | `XP_PHOTOCRAFT_COMFY_API_KEY` | none |
+| comfy.org API key (partner nodes) | `comfy-api-key.txt` in the data folder | `XP_PHOTOCRAFT_COMFY_API_KEY` | none |
 
 A GPU on another machine: an **SSH tunnel** (`ssh -N -L 8188:127.0.0.1:8188 you@gpu-machine`, then
 the default address works), or ComfyUI started with `--listen` on a **trusted LAN**. ComfyUI has no
@@ -153,8 +153,9 @@ masked by your selection, whatever size the graph returns.
 
 ### Partner nodes: Nano Banana and others
 
-ComfyUI's API nodes run on comfy.org and bill your account. Set your comfy.org API key in
-`XP_PHOTOCRAFT_COMFY_API_KEY`; the bridge passes it with each run (never printed, never saved).
+ComfyUI's API nodes run on comfy.org and bill your account. Give the bridge your comfy.org API key,
+either in `XP_PHOTOCRAFT_COMFY_API_KEY` or alone in `comfy-api-key.txt` in the data folder; it is
+passed with each run (never printed, never written anywhere else).
 [`examples/nano-banana-edit.api.json`](examples/nano-banana-edit.api.json) edits with Gemini Nano
 Banana 2.1, the mask as its Image 2 (it has no mask input), and
 [`examples/workflows.json`](examples/workflows.json) gives it the prompt that explains the mask.

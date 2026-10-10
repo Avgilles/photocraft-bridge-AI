@@ -76,13 +76,16 @@ Nano Banana 2.1 est un *nœud partenaire* de ComfyUI : il tourne chez comfy.org 
 compte (quelques centimes par image). Il faut un ComfyUI récent (0.39 ou plus, ce que
 `install-comfyui` installe) et une clé API comfy.org :
 
-1. Créez un compte sur comfy.org et générez une clé API (page *API Keys*).
-2. Donnez-la au pont, une fois pour toutes, dans une console :
-   `setx XP_PHOTOCRAFT_COMFY_API_KEY "votre-clé"` (Linux : exportez-la dans votre profil).
+1. Créez un compte sur [comfy.org](https://www.comfy.org), achetez quelques crédits, et générez une
+   clé API dans votre profil (*API Keys* sur platform.comfy.org). Copiez-la : elle ne se réaffiche pas.
+2. Donnez-la au pont, une fois pour toutes : créez le fichier **`data\comfy-api-key.txt`** (à côté de
+   `workflows.json`) et collez-y la clé, seule, sur une ligne. Alternative pour une console :
+   `setx XP_PHOTOCRAFT_COMFY_API_KEY "votre-clé"`, puis relancez PhotoCraft par `start-photocraft.bat`.
 3. Dans PhotoCraft, menu **XP ▸ Generative fill ▸ Nano Banana 2.1 (comfy.org)**. Le réglage se
    garde par action : Qwen local pour le *Remove*, Nano Banana pour le *Fill*, par exemple.
 
-La clé n'est jamais écrite dans un fichier du pont ni affichée.
+Sans clé, la barre d'état dit « GeminiNanoBanana…: Unauthorized: Please login first to use this
+node ». La clé n'est jamais affichée et ne sort que vers votre ComfyUI, qui la présente à comfy.org.
 
 ## 6. Utiliser
 

@@ -42,6 +42,8 @@ from xp_photocraft.placeholder import PlacementError
 
 # A comfy.org API key, for graphs with partner nodes (Nano Banana, ...) on your own ComfyUI.
 API_KEY_ENV = "XP_PHOTOCRAFT_COMFY_API_KEY"
+# Or the key alone in this file of the data folder: no console needed, and nothing else in it.
+API_KEY_FILE = "comfy-api-key.txt"
 
 
 class FillResult(BaseModel):
@@ -112,6 +114,14 @@ def _workflows_file() -> Path:
     return _data_dir() / WORKFLOWS_FILE
 
 
+def _api_key() -> str:
+    """The comfy.org API key: the environment variable, else the data folder's key file."""
+    key_file = _data_dir() / API_KEY_FILE
+    if os.environ.get(API_KEY_ENV):
+        return os.environ[API_KEY_ENV]
+    return key_file.read_text(encoding="utf-8").strip() if key_file.is_file() else ""
+
+
 def _server(server: str | None) -> str:
     return server or connection.load(_data_dir() / CONNECTION_FILE)
 
@@ -170,7 +180,7 @@ def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: 
     added = reg.workflows.get(workflow_id)
     if added and added.command:
         return Runner(added.command, root)
-    comfy = Comfy(_server(server), api_key=os.environ.get(API_KEY_ENV, ""))
+    comfy = Comfy(_server(server), api_key=_api_key())
     if added is None:  # the built-in graph, its loaders pointed at this server's files
         graph = registry.load_graph(Path(__file__).with_name(BUILTIN_GRAPH))
         models = comfy.find_models()
