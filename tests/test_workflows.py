@@ -222,3 +222,16 @@ def test_generation_size_is_the_region_size_clamped(
 def test_an_untagged_graph_is_refused_before_anything_runs() -> None:
     with pytest.raises(EngineError, match="pc:image or pc:prompt"):
         ComfyGraph(_FakeComfy(), {"1": _node("SaveImage", {}, "Save")})  # type: ignore[arg-type]
+
+
+def test_data_dir_is_beside_a_portable_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exe = tmp_path / "release" / "xp-photocraft.exe"
+    exe.parent.mkdir()
+    exe.write_bytes(b"")
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    assert cli._data_dir() == tmp_path / "appdata" / "xp-photocraft"  # no marker: the user's folder
+    (exe.parent / "portable.txt").write_text("")
+    assert cli._data_dir() == exe.parent / "data"

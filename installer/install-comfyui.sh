@@ -3,13 +3,13 @@
 # Image Edit 2511 models of the built-in workflow, and a start script. Nano Banana needs nothing to
 # install: it is a ComfyUI partner node billed to your comfy.org account (see INSTALL.md).
 #
-#   install-comfyui.sh [folder]        default: ~/ComfyUI-xp
+#   install-comfyui.sh [folder]        default: ComfyUI-xp next to this script
 #   XP_QWEN_VARIANT=int8               for RTX 30 series (int8 weights), default fp8mixed
 #   XP_SKIP_MODELS=1                   install ComfyUI only, no model download (~32 GB)
 #
 # Needs about 40 GB of disk and the NVIDIA driver. Safe to re-run: resumes downloads, skips what is there.
 set -eu
-root="${1:-$HOME/ComfyUI-xp}"
+root="${1:-$(cd "$(dirname "$0")" && pwd)/ComfyUI-xp}"
 variant="${XP_QWEN_VARIANT:-fp8mixed}"
 uv="$HOME/.local/bin/uv"
 # The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.

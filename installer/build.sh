@@ -7,7 +7,8 @@
 set -eu
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo"
-version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1 | tr -d '')"
+version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1 | tr -d '
+')"
 name="xp-photocraft-$version-linux-x64"
 out="$repo/dist/release/$name"
 
@@ -21,6 +22,7 @@ rm -rf "$out"; mkdir -p "$out"
 cp "$repo/dist/pyinstaller/linux/xp-photocraft" "$out/"
 for f in install.sh start-photocraft.sh install-comfyui.sh workflows.json INSTALL.md; do cp "$repo/installer/$f" "$out/"; done
 cp "$repo/examples/nano-banana-edit.api.json" "$repo/LICENSE-MIT" "$repo/LICENSE-APACHE" "$out/"
+echo "This file keeps xp-photocraft portable: its data (connection, workflows, work folder) lives in data/ next to it." > "$out/portable.txt"
 chmod +x "$out"/*.sh "$out/xp-photocraft"
 tar -czf "$out.tar.gz" -C "$repo/dist/release" "$name"
 "$out/xp-photocraft" --version

@@ -3,7 +3,7 @@ rem Installs a ComfyUI for xp-photocraft on this PC (Windows, NVIDIA GPU): Comfy
 rem the Qwen Image Edit 2511 models of the built-in workflow, and a start script. Nano Banana needs
 rem nothing to install: it is a ComfyUI partner node billed to your comfy.org account (see INSTALL.md).
 rem
-rem   install-comfyui.bat [folder]        default folder: %USERPROFILE%\ComfyUI-xp
+rem   install-comfyui.bat [folder]        default folder: ComfyUI-xp next to this script
 rem   set XP_QWEN_VARIANT=int8            for RTX 30 series (int8 weights), default fp8mixed
 rem   set XP_SKIP_MODELS=1                install ComfyUI only, no model download (~32 GB)
 rem
@@ -11,7 +11,7 @@ rem Needs about 40 GB of disk, a recent NVIDIA driver, and a good connection. Sa
 rem resumes downloads and skips what is already there.
 setlocal
 set "ROOT=%~1"
-if "%ROOT%"=="" set "ROOT=%USERPROFILE%\ComfyUI-xp"
+if "%ROOT%"=="" set "ROOT=%~dp0ComfyUI-xp"
 if "%XP_QWEN_VARIANT%"=="" set "XP_QWEN_VARIANT=fp8mixed"
 set "UV=%USERPROFILE%\.local\bin\uv.exe"
 rem The CUDA wheels are large and some mirrors slow: give each download ten minutes, not uv's 30 s.

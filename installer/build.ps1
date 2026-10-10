@@ -1,5 +1,5 @@
-# Builds the Windows release: a single-file xp-photocraft.exe (PyInstaller) and the release folder
-# with the installer scripts, the guide and the Nano Banana example; then zips it.
+# Builds the Windows release: a single-file xp-photocraft.exe (PyInstaller) and the portable release
+# folder with the installer scripts, the guide and the Nano Banana example; then zips it.
 #   powershell -ExecutionPolicy Bypass -File installer\build.ps1
 # Needs uv. Output: dist\release\xp-photocraft-<version>-windows-x64\ and its .zip.
 $ErrorActionPreference = "Stop"
@@ -24,6 +24,8 @@ foreach ($f in "install.bat", "start-photocraft.bat", "install-comfyui.bat", "wo
 }
 Copy-Item "$repo\examples\nano-banana-edit.api.json" $out
 Copy-Item "$repo\LICENSE-MIT", "$repo\LICENSE-APACHE" $out
+# The marker that keeps the release portable: data\ next to the executable (see cli._data_dir).
+Set-Content -Path "$out\portable.txt" -Value "This file keeps xp-photocraft portable: its data (connection, workflows, work folder) lives in data\ next to it."
 Compress-Archive -Path $out -DestinationPath "$out.zip" -Force
 & "$out\xp-photocraft.exe" --version
 Write-Host "-> $out.zip"

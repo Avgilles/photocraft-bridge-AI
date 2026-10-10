@@ -30,6 +30,8 @@ from xp_photocraft.config import (
     CONNECT_TIMEOUT_S,
     CONNECTION_FILE,
     DEFAULT_CONTROL_PORT,
+    PORTABLE_DATA_DIR,
+    PORTABLE_MARKER,
     TOKEN_FILENAME,
     WORK_DIR,
     WORKFLOWS_FILE,
@@ -92,6 +94,11 @@ class DoctorResult(BaseModel):
 
 
 def _data_dir() -> Path:
+    """``data`` next to a portable executable; else the user's data folder."""
+    # The single-file build; from a virtualenv this is its python, which carries no marker.
+    beside = Path(sys.executable).resolve().parent
+    if (beside / PORTABLE_MARKER).is_file():
+        return beside / PORTABLE_DATA_DIR
     # %LOCALAPPDATA% on Windows; elsewhere the XDG data folder (~/.local/share, macOS included).
     base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME")
     return (Path(base) if base else Path.home() / ".local" / "share") / APP_DIR

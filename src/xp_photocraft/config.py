@@ -25,6 +25,10 @@ CONTROL_IDLE_RECONNECT_S = 20.0
 # relative to them), the saved connection and the user's workflows (never in a repository).
 APP_DIR = "xp-photocraft"
 WORK_DIR = "work"
+# A release is portable: this file next to the executable puts the data folder (connection,
+# workflows, work dir) in ``data`` beside it, so one folder holds the whole installation.
+PORTABLE_MARKER = "portable.txt"
+PORTABLE_DATA_DIR = "data"
 CONNECTION_FILE = "connection.json"
 WORKFLOWS_FILE = "workflows.json"
 TOKEN_FILENAME = "control.token"

@@ -5,17 +5,22 @@ une zone, vous tapez ce que vous voulez y voir, le résultat arrive dans un nouv
 Rien ne quitte votre machine avec le modèle intégré (Qwen Image Edit) ; Nano Banana est en option,
 via le cloud comfy.org.
 
-Trois morceaux, à installer dans cet ordre :
+Trois morceaux, à installer dans cet ordre. **Tout reste dans un seul dossier** (celui où vous
+dézippez) : le pont, ses réglages dans `data\`, et ComfyUI dans `ComfyUI-xp\`. Vous pouvez tout
+vérifier, tout déplacer, et désinstaller en supprimant le dossier.
 
 | Morceau | Rôle | Où |
 |---|---|---|
-| **PhotoCraft (build XP)** | l'application, avec la barre d'outils IA sous la sélection et le menu **XP** | release du fork PhotoCraft XP |
+| **PhotoCraft (build XP)** | l'application, avec la barre d'outils IA sous la sélection et le menu **XP** | release du fork PhotoCraft XP, dézippée à côté |
 | **xp-photocraft** (ce dossier) | le pont : PhotoCraft ↔ ComfyUI | `install.bat` / `install.sh` |
-| **ComfyUI** + modèles | la génération, sur ce PC ou sur un autre PC avec un bon GPU | `install-comfyui.bat` / `.sh`, ou un ComfyUI existant |
+| **ComfyUI** + modèles | la génération, sur ce PC ou sur un autre PC avec un bon GPU | `install-comfyui.bat` / `.sh` → `ComfyUI-xp\`, ou un ComfyUI existant |
+
+Il n'y a **rien d'autre à installer** avant : ni Python, ni Git. Le pont est un exécutable autonome
+et l'installeur ComfyUI apporte lui-même son Python (par l'outil `uv`).
 
 ## 1. Ce qu'il faut
 
-- Windows 10/11 64 bits, ou Linux (binaire construit sur Fedora 41, glibc ≥ 2.40).
+- Windows 10/11 64 bits, ou Linux (binaire construit sur Fedora 41, glibc 2.40 ou plus récente).
 - Pour générer **en local** : une carte NVIDIA. 24 Go de VRAM pour le confort (RTX 3090/4090/5090),
   16 Go possible, 12 Go et moins : lent (le modèle déborde en RAM), prévoyez 32 Go de RAM ou plus.
   Sans GPU : utilisez le ComfyUI d'un autre PC (§ 4) ou Nano Banana (§ 5).
@@ -23,22 +28,26 @@ Trois morceaux, à installer dans cet ordre :
 
 ## 2. Installer le pont (Windows)
 
-1. Dézippez la release dans un dossier quelconque.
-2. Double-cliquez **`install.bat`**. Il copie `xp-photocraft.exe` dans
-   `%LOCALAPPDATA%\Programs\xp-photocraft`, l'ajoute à votre PATH utilisateur, crée le dossier de
-   travail et dépose l'exemple Nano Banana. Pas de droits administrateur.
+1. Créez un dossier (par exemple `C:\PhotoCraftXP`) et dézippez-y les deux archives : celle de
+   PhotoCraft XP et celle-ci. Vous obtenez `PhotoCraft-XP\photocraft.exe` et
+   `xp-photocraft-…-windows-x64\xp-photocraft.exe`.
+2. Double-cliquez **`install.bat`**. Il ajoute ce dossier à votre PATH utilisateur (pour que la barre
+   de PhotoCraft trouve le pont), crée `data\` (réglages et dossier de travail) et dépose l'exemple
+   Nano Banana. Rien n'est copié ailleurs, pas de droits administrateur.
 3. Lancez PhotoCraft avec **`start-photocraft.bat`** (il démarre PhotoCraft avec son serveur de
-   contrôle et le dossier de travail partagé). Si le script ne trouve pas `photocraft.exe`, glissez-le
-   dessus une fois, ou écrivez son chemin dans `photocraft-path.txt` à côté.
+   contrôle et le dossier de travail partagé `data\work`). Il trouve `photocraft.exe` dans un dossier
+   `PhotoCraft*` à côté ; sinon glissez l'exe dessus une fois, ou écrivez son chemin dans
+   `photocraft-path.txt`.
 
-Linux : `./install.sh`, puis `start-photocraft /chemin/vers/photocraft`.
+Linux : `./install.sh` (liens dans `~/.local/bin`), puis `start-photocraft`.
 
 ## 3. Installer ComfyUI sur ce PC (NVIDIA)
 
 Double-cliquez **`install-comfyui.bat`** (Linux : `./install-comfyui.sh`). Il installe dans
-`%USERPROFILE%\ComfyUI-xp` : ComfyUI, PyTorch CUDA, les quatre fichiers du workflow intégré (Qwen
-Image Edit 2511, encodeur, VAE, LoRA Lightning, ~32 Go) et un **`start-comfyui.bat`**. Il reprend
-là où il s'est arrêté si vous le relancez.
+`ComfyUI-xp\`, à côté : l'outil `uv` et un Python à lui, ComfyUI, PyTorch CUDA (choisi d'après votre
+pilote NVIDIA), les quatre fichiers du workflow intégré (Qwen Image Edit 2511, encodeur, VAE, LoRA
+Lightning, ~32 Go) et un **`start-comfyui.bat`**. Comptez 3 Go puis 32 Go de téléchargement ; il
+reprend là où il s'est arrêté si vous le relancez.
 
 - RTX 30 (3090, 3080…) : avant de lancer, ouvrez une console et tapez `set XP_QWEN_VARIANT=int8`
   puis `install-comfyui.bat` ; les poids int8 sont plus rapides sur ces cartes.
@@ -108,6 +117,6 @@ Il vérifie, ligne par ligne : le dossier de travail, la liaison avec PhotoCraft
 
 ## 8. Désinstaller
 
-Supprimez `%LOCALAPPDATA%\Programs\xp-photocraft` et `%LOCALAPPDATA%\xp-photocraft` (Linux :
-`~/.local/bin/xp-photocraft`, `~/.local/share/xp-photocraft`), retirez le dossier du PATH si vous le
-souhaitez, et le dossier `ComfyUI-xp` si vous n'en voulez plus.
+Supprimez le dossier (pont, `data\`, `ComfyUI-xp\`) et retirez-le de votre PATH utilisateur
+(Paramètres ▸ Variables d'environnement). Linux : supprimez aussi les deux liens dans `~/.local/bin`.
+Seul `uv` reste, dans `%USERPROFILE%\.local\bin` (Linux : `~/.local/bin/uv`).
