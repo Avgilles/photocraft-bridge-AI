@@ -34,6 +34,7 @@ from xp_photocraft.config import (
     PORTABLE_MARKER,
     TOKEN_FILENAME,
     WORK_DIR,
+    WORKFLOWS_DIR,
     WORKFLOWS_FILE,
 )
 from xp_photocraft.control import Control, ControlError
@@ -84,6 +85,8 @@ class WorkflowsResult(BaseModel):
     workflows: list[WorkflowChoice] = []
     assign: dict[str, str] = {}
     server: str = ""
+    # Where to drop exported graphs (the UI opens it; never shown).
+    folder: str = ""
     error: str = ""
 
 
@@ -344,6 +347,8 @@ def assign(action: str, workflow: str) -> None:
 
 
 def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
+    folder = _workflows_file().parent / WORKFLOWS_DIR
+    folder.mkdir(parents=True, exist_ok=True)  # ready for the first file dropped in
     try:
         reg = get(_workflows_file())
     except registry.WorkflowsError as e:
@@ -359,6 +364,7 @@ def _emit_workflows(get: Callable[[Path], registry.Registry]) -> None:
             workflows=[WorkflowChoice(id=k, label=v) for k, v in labels.items()],
             assign=assigned,
             server=_server(None),
+            folder=str(folder),
         )
     )
 

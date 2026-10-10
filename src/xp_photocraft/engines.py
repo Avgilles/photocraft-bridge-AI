@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any, Protocol
@@ -47,13 +48,21 @@ class ComfyGraph:
     ``prompt`` or ``text`` input, through ``template`` (``{prompt}`` is replaced). Optional:
     ``pc:mask`` (a LoadImage or LoadImageMask; white = repaint), ``pc:seed`` (``seed`` or
     ``noise_seed``; else the ``pc:prompt`` node's own), ``pc:output`` (the image to keep; else
-    the first saved one).
+    the first saved one), ``pc:scale`` (``megapixels`` or ``resolution``: the region's own size,
+    clamped). One title can carry several tags, space-separated.
     """
 
     def __init__(self, comfy: Comfy, graph: dict[str, Any], template: str = "{prompt}") -> None:
-        missing = [tag for tag in REQUIRED_TAGS if tag not in _tagged(graph)]
+        nodes = _tagged(graph)
+        missing = [tag for tag in REQUIRED_TAGS if tag not in nodes]
         if missing:
             raise EngineError(f"the workflow has no node titled {' or '.join(missing)}")
+        # A graph carries its own wording when its pc:prompt text holds {prompt} (typed in ComfyUI
+        # before Export (API)): a file dropped in the workflows folder needs nothing else.
+        inputs = nodes["pc:prompt"]["inputs"]
+        own = str(inputs.get("prompt", inputs.get("text", "")))
+        if template == "{prompt}" and "{prompt}" in own:
+            template = own
         self._comfy, self._graph, self._template = comfy, graph, template
 
     def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
@@ -64,7 +73,14 @@ class ComfyGraph:
         if "pc:mask" in nodes:
             nodes["pc:mask"]["inputs"]["image"] = self._comfy.upload(mask)
         if "pc:scale" in nodes:
-            _set(nodes, "pc:scale", ("megapixels",), generation_megapixels(region))
+            megapixels = generation_megapixels(region)
+            if "resolution" in nodes["pc:scale"]["inputs"]:
+                # Qwen Image 2.1's encoder: the side of a square of that area, multiple of 32.
+                nodes["pc:scale"]["inputs"]["resolution"] = (
+                    round(math.sqrt(megapixels * 1e6) / 32) * 32
+                )
+            else:
+                _set(nodes, "pc:scale", ("megapixels",), megapixels)
         _set(nodes, "pc:prompt", ("prompt", "text"), self._template.replace("{prompt}", prompt))
         # A node titled pc:seed; else the prompt node's own seed (API nodes such as Nano Banana).
         seeded = "pc:seed" if "pc:seed" in nodes else "pc:prompt"
@@ -82,7 +98,13 @@ def generation_megapixels(region: Path) -> float:
 
 
 def _tagged(graph: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(n.get("_meta", {}).get("title")): n for n in graph.values() if isinstance(n, dict)}
+    # A title may carry several tags ("pc:prompt pc:scale"): one node, several roles.
+    return {
+        tag: node
+        for node in graph.values()
+        if isinstance(node, dict)
+        for tag in str(node.get("_meta", {}).get("title")).split()
+    }
 
 
 def _set(nodes: dict[str, dict[str, Any]], tag: str, names: tuple[str, ...], value: object) -> None:

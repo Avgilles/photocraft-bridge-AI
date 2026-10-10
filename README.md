@@ -99,14 +99,20 @@ authentication: never expose its port to the internet.
 
 ## Workflows
 
-Each action (`fill`, `remove`) runs one workflow. `workflows.json` in the data folder adds yours and
-assigns them ([example](examples/workflows.json)); the fork's XP menu does the same with a click.
+Each action (`fill`, `remove`) runs one workflow. **Drop a graph exported from ComfyUI in the
+`workflows` folder of the data folder** and it is one more workflow, named after its file
+(`Flux Fill.json` → *Flux Fill*); the fork's XP menu lists it the next time it opens (*Open
+Workflows Folder* is in that menu) and assigns it to an action with a click.
 
 ```bash
 xp-photocraft workflows                  # every workflow, and the one each action runs
-xp-photocraft assign fill nano-banana    # Generative Fill now runs nano-banana
+xp-photocraft assign fill "Flux Fill"    # Generative Fill now runs workflows/Flux Fill.json
 xp-photocraft fill --prompt "..." --workflow qwen-edit   # one run with another workflow
 ```
+
+`workflows.json` in the data folder is optional: it keeps the assignments, and can declare a
+workflow by hand — a graph elsewhere, an external command, another label
+([example](examples/workflows.json)).
 
 ### Built-in: `qwen-edit`
 
@@ -124,8 +130,7 @@ ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in a
 | `loras` | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` |
 
 The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json):
-copy it next to your `workflows.json` as a starting point for your own settings (the
-[example](examples/workflows.json) declares it as `qwen-custom`).
+copy it into the `workflows` folder under another name as a starting point for your own settings.
 
 ### Your own ComfyUI workflow
 
@@ -135,32 +140,50 @@ click ▸ Title) so the bridge knows where things go:
 | Title | Node | What the bridge does |
 |---|---|---|
 | `pc:image` | Load Image | loads the selection plus a 96 px margin (sRGB PNG) |
-| `pc:prompt` | the node with the prompt | sets its `prompt` or `text` input |
+| `pc:prompt` | the node with the prompt | sets its `prompt` or `text` input; a text holding `{prompt}` is kept around what you type |
 | `pc:mask` *(optional)* | Load Image / Load Image (as Mask) | loads the mask: white = repaint |
 | `pc:seed` *(optional)* | the sampler | sets `seed` or `noise_seed` (else the prompt node's own `seed`) |
 | `pc:output` *(optional)* | Save Image | keeps this image (else the first saved one) |
-| `pc:scale` *(optional)* | Image Scale To Total Pixels | sets `megapixels` to the region's own size, clamped to 0.25–1 MP |
+| `pc:scale` *(optional)* | Image Scale To Total Pixels, or Qwen Image 2.1's text encoder | sets `megapixels` (or `resolution`, the side of a square of that area) to the region's own size, clamped to 0.25–1 MP |
 
-Then declare it, with a path relative to `workflows.json`:
+A title can carry several tags, space-separated: Qwen Image 2.1's text encoder is
+`pc:prompt pc:scale`.
 
-```json
-{"workflows": {"flux-fill": {"label": "Flux Fill", "graph": "flux_fill_api.json"}}}
-```
-
-`"prompt"` wraps what you type, for models that need instructions around it
-(`"Image 2 is a mask… In the white area: {prompt}."`). The result is resized to the region and
+Then drop the file in the `workflows` folder. A model that needs instructions around what you type
+gets them in the prompt node itself, before the export: `Image 2 is a mask… In the white area:
+{prompt}.` (or in a `"prompt"` entry of `workflows.json`). The result is resized to the region and
 masked by your selection, whatever size the graph returns.
+
+### Shipped: Qwen Image 2.1 Turbo (local, non-commercial)
+
+[`examples/workflows/Qwen Image 2.1 Turbo (non-commercial).json`](examples/workflows/Qwen%20Image%202.1%20Turbo%20(non-commercial).json)
+edits with Qwen Image 2.1 and its Turbo LoRA (8 steps), ComfyUI core nodes only (ComfyUI 0.39 or
+later), the mask as its `<image2>`, generated at the region's size. Its files come from
+[Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) (about 18 GB):
+
+| Folder | File |
+|---|---|
+| `diffusion_models` | `qwen_image_2.1_int8_convrot.safetensors` |
+| `text_encoders` | `qwen3vl_8b_int8_convrot.safetensors` |
+| `vae` | `qwen_image_2.1_vae_bf16.safetensors` |
+| `loras` | `qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors` |
+
+On the demo's four gestures (a plate, a logo, a person and their shadow, a dragon), with one RTX
+3090, it took 12 to 15 s each, against 18 to 47 s for Nano Banana, at a comparable quality.
+**Its weights are for research and evaluation only** (Qwen Research License: "You shall not use
+the Materials for any commercial purpose without obtaining a separate commercial license"); for
+paid work, use the built-in Qwen Image Edit 2511 (Apache-2.0) or a commercial model.
 
 ### Partner nodes: Nano Banana and others
 
 ComfyUI's API nodes run on comfy.org and bill your account. Give the bridge your comfy.org API key,
 either in `XP_PHOTOCRAFT_COMFY_API_KEY` or in the data folder's `.env` file (same name; a release
 ships `.env.example`); it is passed with each run (never printed, never written anywhere else).
-[`examples/nano-banana-edit.api.json`](examples/nano-banana-edit.api.json) edits with Gemini Nano
-Banana 2.1, the mask as its Image 2 (it has no mask input), and
-[`examples/workflows.json`](examples/workflows.json) gives it the prompt that explains the mask.
-The example uses the node's format of recent ComfyUI releases; on another version, export the
-graph from your own ComfyUI and title its nodes as above.
+[`examples/workflows/Nano Banana 2.1 (comfy.org).json`](examples/workflows/Nano%20Banana%202.1%20(comfy.org).json)
+edits with Gemini Nano Banana 2.1, the mask as its Image 2 (it has no mask input), with the prompt
+that explains the mask; a release ships it in `data/workflows`. The example uses the node's format
+of recent ComfyUI releases; on another version, export the graph from your own ComfyUI and title
+its nodes as above.
 
 ### Any other command
 

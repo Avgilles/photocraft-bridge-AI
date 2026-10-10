@@ -4,7 +4,7 @@
   "3": {
     "class_type": "GeminiNanoBanana2V2",
     "inputs": {
-      "prompt": "",
+      "prompt": "Edit Image 1, a photograph. Image 2 is a black and white mask of Image 1: keep everything in its black area exactly as it is. In the white area: {prompt}. Match the photograph's lighting, perspective, colors, focus and grain.",
       "model": "Gemini Nano Banana 2.1",
       "seed": 0,
       "response_modalities": "IMAGE",

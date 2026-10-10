@@ -22,13 +22,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 set "PATH=%PATH%;%HERE%"
 
 mkdir "%HERE%\data\work" 2>nul
-if not exist "%HERE%\data\workflows.json" (
-    copy /Y "%HERE%\workflows.json" "%HERE%\data\workflows.json" >nul
-    copy /Y "%HERE%\nano-banana-edit.api.json" "%HERE%\data\nano-banana-edit.api.json" >nul
-    echo  Workflows:  data\workflows.json ^(built-in Qwen + Nano Banana example^)
-) else (
-    echo  Workflows:  kept data\workflows.json
-)
+rem The shipped workflows; a file already there (maybe edited) is kept.
+mkdir "%HERE%\data\workflows" 2>nul
+for %%f in ("%HERE%\workflows\*.json") do if not exist "%HERE%\data\workflows\%%~nxf" copy "%%f" "%HERE%\data\workflows\" >nul
+echo  Workflows:  data\workflows\ ^(drop a graph exported from ComfyUI there^)
 
 echo.
 echo  Testing the ComfyUI connection ...

@@ -32,8 +32,8 @@ et l'installeur ComfyUI apporte lui-même son Python (par l'outil `uv`).
    PhotoCraft XP et celle-ci. Vous obtenez `PhotoCraft-XP\photocraft.exe` et
    `xp-photocraft-…-windows-x64\xp-photocraft.exe`.
 2. Double-cliquez **`install.bat`**. Il ajoute ce dossier à votre PATH utilisateur (pour que la barre
-   de PhotoCraft trouve le pont), crée `data\` (réglages et dossier de travail) et dépose l'exemple
-   Nano Banana. Rien n'est copié ailleurs, pas de droits administrateur.
+   de PhotoCraft trouve le pont), crée `data\` (réglages et dossier de travail) et dépose les
+   workflows fournis dans `data\workflows\`. Rien n'est copié ailleurs, pas de droits administrateur.
 3. Lancez PhotoCraft avec **`start-photocraft.bat`** (il démarre PhotoCraft avec son serveur de
    contrôle et le dossier de travail partagé `data\work`). Il trouve `photocraft.exe` dans un dossier
    `PhotoCraft*` à côté ; sinon glissez l'exe dessus une fois, ou écrivez son chemin dans
@@ -86,6 +86,31 @@ compte (quelques centimes par image). Il faut un ComfyUI récent (0.39 ou plus, 
 
 Sans clé, la barre d'état dit « GeminiNanoBanana…: Unauthorized: Please login first to use this
 node ». La clé n'est jamais affichée et ne sort que vers votre ComfyUI, qui la présente à comfy.org.
+
+### Qwen Image 2.1 Turbo (local, usage non commercial)
+
+Le menu **XP** propose aussi *Qwen Image 2.1 Turbo (non-commercial)* : local, gratuit, 12 à 15 s
+par génération sur une RTX 3090, d'une qualité proche de Nano Banana. **Sa licence (Qwen Research
+License) n'autorise que la recherche et l'évaluation** : pour un travail payé, gardez Qwen Edit
+2511 (intégré, Apache-2.0) ou Nano Banana. Il faut ComfyUI 0.39 ou plus et ces quatre fichiers
+(~18 Go), à poser dans les dossiers de `ComfyUI-xp\ComfyUI\models\` :
+
+| Dossier | Fichier ([Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main)) |
+|---|---|
+| `diffusion_models` | `qwen_image_2.1_int8_convrot.safetensors` |
+| `text_encoders` | `qwen3vl_8b_int8_convrot.safetensors` |
+| `vae` | `qwen_image_2.1_vae_bf16.safetensors` |
+| `loras` | `qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors` |
+
+### Ajouter vos propres workflows
+
+Tout graphe ComfyUI déposé dans **`data\workflows\`** devient un workflow, au nom de son fichier
+(`Flux Fill.json` → *Flux Fill*) : menu **XP ▸ Open Workflows Folder**, déposez le fichier, rouvrez
+le menu XP, choisissez-le pour *Generative fill* ou *Remove (IA)*. Dans ComfyUI, enregistrez-le par
+**Workflow ▸ Export (API)** après avoir titré quelques nœuds (clic droit ▸ *Title*) : `pc:image` sur
+le *Load Image* qui reçoit la sélection, `pc:prompt` sur le nœud du prompt, et au besoin `pc:mask`,
+`pc:seed`, `pc:output` (détails dans le README). Si le modèle a besoin d'explications autour de ce
+que vous tapez, écrivez-les dans le prompt du graphe avec `{prompt}` à la place de votre texte.
 
 ## 6. Utiliser
 

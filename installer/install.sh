@@ -23,12 +23,10 @@ case ":$PATH:" in
   *) echo " PATH:       add $bin to your PATH (most distributions do it at next login)" ;;
 esac
 
-if [ ! -f "$here/data/workflows.json" ]; then
-  cp "$here/workflows.json" "$here/nano-banana-edit.api.json" "$here/data/"
-  echo " Workflows:  data/workflows.json (built-in Qwen + Nano Banana example)"
-else
-  echo " Workflows:  kept data/workflows.json"
-fi
+# The shipped workflows; a file already there (maybe edited) is kept.
+mkdir -p "$here/data/workflows"
+for f in "$here"/workflows/*.json; do [ -e "$here/data/workflows/${f##*/}" ] || cp "$f" "$here/data/workflows/"; done
+echo " Workflows:  data/workflows/ (drop a graph exported from ComfyUI there)"
 if [ ! -f "$here/data/.env" ]; then
   cp "$here/.env.example" "$here/data/.env"
   echo " Settings:   data/.env (your comfy.org API key goes there, for Nano Banana)"

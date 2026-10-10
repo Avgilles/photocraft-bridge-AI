@@ -1,0 +1,42 @@
+{
+  "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": "qwen_image_2.1_int8_convrot.safetensors", "weight_dtype": "default"}},
+  "turbo": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {"model": ["unet", 0], "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 1.0}
+  },
+  "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen3vl_8b_int8_convrot.safetensors", "type": "qwen_image", "device": "default"}},
+  "vae": {"class_type": "VAELoader", "inputs": {"vae_name": "qwen_image_2.1_vae_bf16.safetensors"}},
+  "image": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "pc:image"}},
+  "mask": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "pc:mask"}},
+  "encode": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
+      "prompt": "Edit <image1>, a photograph. <image2> is a black and white mask of <image1>: keep everything in its black area exactly as it is. In the white area: {prompt}. Match the photograph's lighting, perspective, colors, focus and grain.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": ["image", 0],
+      "images.image_2": ["mask", 0]
+    },
+    "_meta": {"title": "pc:prompt pc:scale"}
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["turbo", 0],
+      "positive": ["encode", 0],
+      "negative": ["encode", 1],
+      "latent_image": ["encode", 2],
+      "seed": 0,
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "_meta": {"title": "pc:seed"}
+  },
+  "decode": {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]}},
+  "save": {"class_type": "SaveImage", "inputs": {"images": ["decode", 0], "filename_prefix": "xp-photocraft/qwen-image-2.1"}, "_meta": {"title": "pc:output"}}
+}

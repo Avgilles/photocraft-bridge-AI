@@ -19,11 +19,11 @@ if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed" }
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $out | Out-Null
 Copy-Item "$repo\dist\pyinstaller\windows\xp-photocraft.exe" $out
-foreach ($f in "install.bat", "start-photocraft.bat", "install-comfyui.bat", "workflows.json", "INSTALL.md") {
+foreach ($f in "install.bat", "start-photocraft.bat", "install-comfyui.bat", "INSTALL.md") {
     Copy-Item "$repo\installer\$f" $out
 }
 Copy-Item "$repo\installer\.env.example" $out
-Copy-Item "$repo\examples\nano-banana-edit.api.json" $out
+Copy-Item -Recurse "$repo\examples\workflows" "$out\workflows"
 Copy-Item "$repo\LICENSE-MIT", "$repo\LICENSE-APACHE" $out
 # The marker that keeps the release portable: data\ next to the executable (see cli._data_dir).
 Set-Content -Path "$out\portable.txt" -Value "This file keeps xp-photocraft portable: its data (connection, workflows, work folder) lives in data\ next to it."

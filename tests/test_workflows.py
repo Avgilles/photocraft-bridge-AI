@@ -118,6 +118,55 @@ def test_cli_assign_saves_and_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "run.py" not in stdout  # commands (private paths) never reach the UI
 
 
+def test_a_graph_dropped_in_the_folder_is_listed_and_assignable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    data = tmp_path / "xp-photocraft"
+    _write_registry(data / "workflows.json", {})
+    (data / "workflows").mkdir()
+    (data / "workflows" / "Qwen Image 2.1.json").write_text(json.dumps(_GRAPH), encoding="utf-8")
+    (data / "workflows" / "flux.json").write_text("{}", encoding="utf-8")  # declared one wins
+
+    CliRunner().invoke(cli.cli, ["assign", "fill", "Qwen Image 2.1"])
+    listed = json.loads(CliRunner().invoke(cli.cli, ["workflows"]).stdout)
+    saved = json.loads((data / "workflows.json").read_text(encoding="utf-8"))
+
+    assert [w["label"] for w in listed["workflows"]][1:] == ["Banana", "Flux", "Qwen Image 2.1"]
+    assert listed["assign"]["fill"] == "Qwen Image 2.1"
+    assert set(saved["workflows"]) == {"banana", "flux"}  # the folder stays the folder
+    assert listed["folder"] == str(data / "workflows")
+    engine = cli._engine(registry.load(data / "workflows.json"), "Qwen Image 2.1", None, tmp_path)
+    assert isinstance(engine, ComfyGraph)
+
+
+def test_graph_carries_its_own_prompt_wording(tmp_path: Path) -> None:
+    graph = json.loads(json.dumps(_GRAPH))
+    graph["3"]["inputs"]["text"] = "Image 2 is a mask. In its white area: {prompt}."
+    comfy = _FakeComfy()
+
+    ComfyGraph(comfy, graph).generate(tmp_path / "r.png", tmp_path / "m.png", "a kite", 1, "fill")  # type: ignore[arg-type]
+
+    assert comfy.graph["3"]["inputs"]["text"] == "Image 2 is a mask. In its white area: a kite."
+
+
+@pytest.mark.parametrize("size,side", [((312, 242), 512), ((650, 736), 704), ((2000, 1500), 992)])
+def test_one_node_can_be_prompt_and_scale(tmp_path: Path, size: tuple[int, int], side: int) -> None:
+    # Qwen Image 2.1: the prompt and the generation size live on its text encoder.
+    graph = {
+        "1": _node("LoadImage", {"image": ""}, "pc:image"),
+        "2": _node(
+            "TextEncodeQwenImage21", {"prompt": "", "resolution": 1024}, "pc:prompt pc:scale"
+        ),
+    }
+    Image.new("RGB", size).save(tmp_path / "r.png")
+    comfy = _FakeComfy()
+
+    ComfyGraph(comfy, graph).generate(tmp_path / "r.png", tmp_path / "m.png", "a kite", 1, "fill")  # type: ignore[arg-type]
+
+    assert comfy.graph["2"]["inputs"] == {"prompt": "a kite", "resolution": side}
+
+
 def _runner(tmp_path: Path) -> Runner:
     script = tmp_path / "fake_runner.py"
     script.write_text(_FAKE_RUNNER, encoding="utf-8")

@@ -31,6 +31,8 @@ PORTABLE_MARKER = "portable.txt"
 PORTABLE_DATA_DIR = "data"
 CONNECTION_FILE = "connection.json"
 WORKFLOWS_FILE = "workflows.json"
+# Beside it: every API graph dropped in this folder is a workflow, named after its file.
+WORKFLOWS_DIR = "workflows"
 TOKEN_FILENAME = "control.token"
 
 # --- the round trip -----------------------------------------------------------

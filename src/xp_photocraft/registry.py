@@ -1,6 +1,7 @@
 """The user's workflows and the one each action runs, from ``workflows.json``.
 
-The built-in ``qwen-edit`` is always there. The file adds workflows — a ComfyUI graph exported
+The built-in ``qwen-edit`` is always there, and so is every graph dropped in the ``workflows``
+folder beside the file (named after its file). The file adds workflows — a ComfyUI graph exported
 with *Export (API)* whose nodes carry ``pc:*`` titles (see ``engines.ComfyGraph``), run on the
 saved connection; or an external command speaking ``xp-photocraft/runner@1`` — and assigns one
 workflow per action::
@@ -22,7 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from xp_photocraft.config import ACTIONS, BUILTIN_LABEL, BUILTIN_WORKFLOW
+from xp_photocraft.config import ACTIONS, BUILTIN_LABEL, BUILTIN_WORKFLOW, WORKFLOWS_DIR
 
 
 class Workflow(BaseModel):
@@ -58,7 +59,20 @@ class WorkflowsError(ValueError):
 
 
 def load(path: Path) -> Registry:
-    """Return the registry saved in ``path``; empty (built-in only) when there is none."""
+    """Return ``path``'s registry plus every graph in the ``workflows`` folder beside it.
+
+    A dropped file is a workflow named after it (``Flux Fill.json`` → ``Flux Fill``); an entry
+    of ``workflows.json`` with the same id wins.
+    """
+    registry = _read(path)
+    for graph in sorted((path.parent / WORKFLOWS_DIR).glob("*.json"), key=lambda p: p.stem.lower()):
+        registry.workflows.setdefault(
+            graph.stem, Workflow(label=graph.stem, graph=f"{WORKFLOWS_DIR}/{graph.name}")
+        )
+    return registry
+
+
+def _read(path: Path) -> Registry:
     if not path.is_file():
         return Registry()
     try:
@@ -105,9 +119,9 @@ def pick(registry: Registry, action: str, override: str) -> str:
 
 def assign(path: Path, action: str, workflow_id: str) -> Registry:
     """Make ``action`` run ``workflow_id`` from now on, and save it."""
-    registry = load(path)
-    registry.assign[action] = pick(registry, action, workflow_id)
+    saved = _read(path)  # the folder's workflows stay in the folder
+    saved.assign[action] = pick(load(path), action, workflow_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     # exclude_defaults: the file keeps the shape the user wrote.
-    path.write_text(registry.model_dump_json(indent=2, exclude_defaults=True) + "\n", "utf-8")
-    return registry
+    path.write_text(saved.model_dump_json(indent=2, exclude_defaults=True) + "\n", "utf-8")
+    return load(path)
