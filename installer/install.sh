@@ -29,6 +29,10 @@ if [ ! -f "$here/data/workflows.json" ]; then
 else
   echo " Workflows:  kept data/workflows.json"
 fi
+if [ ! -f "$here/data/.env" ]; then
+  cp "$here/.env.example" "$here/data/.env"
+  echo " Settings:   data/.env (your comfy.org API key goes there, for Nano Banana)"
+fi
 
 echo
 echo " Testing the ComfyUI connection ..."

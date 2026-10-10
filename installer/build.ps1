@@ -22,6 +22,7 @@ Copy-Item "$repo\dist\pyinstaller\windows\xp-photocraft.exe" $out
 foreach ($f in "install.bat", "start-photocraft.bat", "install-comfyui.bat", "workflows.json", "INSTALL.md") {
     Copy-Item "$repo\installer\$f" $out
 }
+Copy-Item "$repo\installer\.env.example" $out
 Copy-Item "$repo\examples\nano-banana-edit.api.json" $out
 Copy-Item "$repo\LICENSE-MIT", "$repo\LICENSE-APACHE" $out
 # The marker that keeps the release portable: data\ next to the executable (see cli._data_dir).

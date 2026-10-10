@@ -21,6 +21,7 @@ uv run --python 3.11 --with pyinstaller pyinstaller --noconfirm --clean --onefil
 rm -rf "$out"; mkdir -p "$out"
 cp "$repo/dist/pyinstaller/linux/xp-photocraft" "$out/"
 for f in install.sh start-photocraft.sh install-comfyui.sh workflows.json INSTALL.md; do cp "$repo/installer/$f" "$out/"; done
+cp "$repo/installer/.env.example" "$out/"
 cp "$repo/examples/nano-banana-edit.api.json" "$repo/LICENSE-MIT" "$repo/LICENSE-APACHE" "$out/"
 echo "This file keeps xp-photocraft portable: its data (connection, workflows, work folder) lives in data/ next to it." > "$out/portable.txt"
 chmod +x "$out"/*.sh "$out/xp-photocraft"

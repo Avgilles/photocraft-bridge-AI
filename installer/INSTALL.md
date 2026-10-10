@@ -78,9 +78,9 @@ compte (quelques centimes par image). Il faut un ComfyUI récent (0.39 ou plus, 
 
 1. Créez un compte sur [comfy.org](https://www.comfy.org), achetez quelques crédits, et générez une
    clé API dans votre profil (*API Keys* sur platform.comfy.org). Copiez-la : elle ne se réaffiche pas.
-2. Donnez-la au pont, une fois pour toutes : créez le fichier **`data\comfy-api-key.txt`** (à côté de
-   `workflows.json`) et collez-y la clé, seule, sur une ligne. Alternative pour une console :
-   `setx XP_PHOTOCRAFT_COMFY_API_KEY "votre-clé"`, puis relancez PhotoCraft par `start-photocraft.bat`.
+2. Ouvrez **`data\.env`** (créé par `install.bat` depuis `.env.example`) et renseignez la ligne
+   `XP_PHOTOCRAFT_COMFY_API_KEY=votre-clé`. Le pont lit ce fichier à chaque génération : rien à
+   relancer. Une variable d'environnement du même nom, si vous en avez une, a priorité.
 3. Dans PhotoCraft, menu **XP ▸ Generative fill ▸ Nano Banana 2.1 (comfy.org)**. Le réglage se
    garde par action : Qwen local pour le *Remove*, Nano Banana pour le *Fill*, par exemple.
 

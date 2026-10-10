@@ -42,8 +42,8 @@ from xp_photocraft.placeholder import PlacementError
 
 # A comfy.org API key, for graphs with partner nodes (Nano Banana, ...) on your own ComfyUI.
 API_KEY_ENV = "XP_PHOTOCRAFT_COMFY_API_KEY"
-# Or the key alone in this file of the data folder: no console needed, and nothing else in it.
-API_KEY_FILE = "comfy-api-key.txt"
+# Or in the data folder's .env file (KEY=value lines; the release ships a .env.example).
+DOTENV_FILE = ".env"
 
 
 class FillResult(BaseModel):
@@ -115,11 +115,24 @@ def _workflows_file() -> Path:
 
 
 def _api_key() -> str:
-    """The comfy.org API key: the environment variable, else the data folder's key file."""
-    key_file = _data_dir() / API_KEY_FILE
+    """The comfy.org API key: the environment variable, else the data folder's .env file."""
     if os.environ.get(API_KEY_ENV):
         return os.environ[API_KEY_ENV]
-    return key_file.read_text(encoding="utf-8").strip() if key_file.is_file() else ""
+    return _dotenv(_data_dir() / DOTENV_FILE).get(API_KEY_ENV, "")
+
+
+def _dotenv(path: Path) -> dict[str, str]:
+    """KEY=value lines of a .env file (comments and blanks skipped, quotes stripped); {} if none."""
+    if not path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip("\"'")
+    return values
 
 
 def _server(server: str | None) -> str:
