@@ -7,6 +7,8 @@ setlocal
 set "HERE=%~dp0"
 set "WORK=%HERE%data\work"
 mkdir "%WORK%" 2>nul
+rem This folder first on PATH: PhotoCraft's task bar runs the bridge that sits next to this script.
+set "PATH=%HERE:~0,-1%;%PATH%"
 set "PC="
 if not "%~1"=="" if exist "%~1" set "PC=%~1"
 if not defined PC if exist "%HERE%photocraft-path.txt" set /p PC=<"%HERE%photocraft-path.txt"

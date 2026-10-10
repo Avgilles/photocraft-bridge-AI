@@ -6,6 +6,8 @@ set -u
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 work="$here/data/work"
 mkdir -p "$work"
+# This folder first on PATH: PhotoCraft's task bar runs the bridge that sits next to this script.
+export PATH="$here:$PATH"
 pc="${1:-}"
 [ -n "$pc" ] || for d in "$here"/PhotoCraft* "$here"/../PhotoCraft*; do [ -x "$d/photocraft" ] && { pc="$d/photocraft"; break; }; done
 [ -n "$pc" ] || pc="$(command -v photocraft || true)"
