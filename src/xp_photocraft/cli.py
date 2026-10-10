@@ -185,7 +185,7 @@ def _with_common(f: _F) -> _F:
     return f
 
 
-Action = Callable[[Control, Engine, int, Path], roundtrip.Rect]
+Action = Callable[[Control, Engine, int, Path, str], roundtrip.Rect]
 
 
 def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: Path) -> Engine:
@@ -221,7 +221,7 @@ def _run(
         reg = registry.load(_workflows_file())
         workflow = registry.pick(reg, mode, workflow)
         engine = _engine(reg, workflow, server, root)
-        rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root)
+        rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root, workflow)
     except (
         ControlError,
         ComfyError,
@@ -270,8 +270,8 @@ def fill(
     """Generative Fill: repaint the selection from a prompt, as a new masked layer."""
     layer = "Generative Fill"
 
-    def action(pc: Control, engine: Engine, seed: int, root: Path) -> roundtrip.Rect:
-        return roundtrip.fill_selection(pc, engine, prompt, seed, root, layer)
+    def action(pc: Control, engine: Engine, seed: int, root: Path, wf: str) -> roundtrip.Rect:
+        return roundtrip.fill_selection(pc, engine, prompt, seed, root, layer, wf)
 
     _run("fill", layer, action, seed, port, work, server, workflow)
 
@@ -286,8 +286,8 @@ def remove(
     """Remove (AI): erase what is selected and rebuild the background, as a new masked layer."""
     layer = "Remove (AI)"
 
-    def action(pc: Control, engine: Engine, seed: int, root: Path) -> roundtrip.Rect:
-        return roundtrip.remove_selection(pc, engine, seed, root, layer)
+    def action(pc: Control, engine: Engine, seed: int, root: Path, wf: str) -> roundtrip.Rect:
+        return roundtrip.remove_selection(pc, engine, seed, root, layer, wf)
 
     _run("remove", layer, action, seed, port, work, server, workflow)
 

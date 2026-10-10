@@ -98,6 +98,10 @@ Sélectionnez une zone (rectangle, lasso…). Une barre apparaît dessous :
   sélection.
 - **Remove** : le remplissage classique de PhotoCraft, sans IA.
 
+Chaque résultat est aussi gardé **à côté du fichier du document**, dans `xp-work\<nom du document>\`
+(image du modèle + un `.json` avec le prompt, le workflow et la graine) : un dossier par projet, rien
+ne s'accumule ailleurs. Sur un document jamais enregistré, la barre propose d'abord de l'enregistrer.
+
 Conseils : une marge autour de l'objet aide le modèle ; pour ajouter quelque chose dans une zone
 uniforme (ciel, mur), adoucissez la sélection (Feather 20–30 px) et laissez de la place pour l'ombre
 ou la fumée. Une génération écrase le presse-papiers (limite connue).

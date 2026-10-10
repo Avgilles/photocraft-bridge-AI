@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -44,7 +45,10 @@ class FakeControl:
         self.log.append((command, p))
         doc = self.doc
         if command == "session.inspect":
-            names = [{"index": i, "name": d["name"]} for i, d in enumerate(self.docs)]
+            names = [
+                {"index": i, "name": d["name"], "path": d.get("path")}
+                for i, d in enumerate(self.docs)
+            ]
             return {"active": self.active, "documents": names}
         if command == "document.inspect":
             return {
@@ -247,3 +251,28 @@ def test_fill_selection_without_selection_touches_nothing(tmp_path: Path) -> Non
 )
 def test_context_rect_is_clamped_to_the_document(bounds: Rect, expected: Rect) -> None:
     assert roundtrip.context_rect(bounds, (1248, 1893), 96) == expected
+
+
+def test_each_result_is_kept_in_xp_work_next_to_the_document(tmp_path: Path) -> None:
+    project = tmp_path / "projects" / "poster"
+    project.mkdir(parents=True)
+    pc = FakeControl(tmp_path)
+    pc.docs[0]["path"] = str(project / "daylight_suv.psd")
+
+    roundtrip.fill_selection(
+        pc, FakeEngine(), "a plate", 7, tmp_path, "Generative Fill", "qwen-edit"
+    )  # type: ignore[arg-type]
+
+    kept = sorted((project / "xp-work" / "daylight_suv").iterdir())
+    assert [k.suffix for k in kept] == [".json", ".png"]
+    record = json.loads(kept[0].read_text(encoding="utf-8"))
+    assert (record["prompt"], record["workflow"], record["seed"]) == ("a plate", "qwen-edit", 7)
+    assert kept[1].name.endswith("_fill_7.png")
+
+
+def test_a_never_saved_document_keeps_nothing_beside_it(tmp_path: Path) -> None:
+    assert roundtrip.project_work_dir("", tmp_path) is None
+    assert (
+        roundtrip.project_work_dir("in/opened.png", tmp_path)
+        == tmp_path / "in" / "xp-work" / "opened"
+    )

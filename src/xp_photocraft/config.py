@@ -46,6 +46,11 @@ MARGIN_PX = 96
 GEN_MIN_MP = 0.25
 GEN_MAX_MP = 1.0
 
+# Each result is also kept next to the document it was made for: <document folder>/xp-work/
+# <document stem>/<time>_<action>_<seed>.png with a .json sidecar (prompt, workflow, bounds). The
+# work dir only ever holds the last exchange with PhotoCraft: nothing piles up across projects.
+PROJECT_WORK_DIR = "xp-work"
+
 REGION_FILE = "region.png"
 MASK_FILE = "mask.png"
 PLACED_FILE = "placed.png"

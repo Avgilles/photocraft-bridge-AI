@@ -171,6 +171,15 @@ its path as the last argument. The command prints one JSON line `{"image": "<png
 relative to the work folder), or exits non-zero with a short error as the last line of stderr, shown
 in PhotoCraft's status bar. Commands never reach PhotoCraft: `workflows` shows ids and labels only.
 
+## Where the results go
+
+Each result becomes a layer, and is also kept **next to the document's file**:
+`<document folder>/xp-work/<document name>/<time>_<action>_<seed>.png`, with a `.json` beside it
+(prompt, workflow, seed, selection and placed bounds). Fifteen projects, fifteen `xp-work` folders,
+nothing piling up in one place. A document never saved has nowhere to keep them: the fork's task bar
+asks to save it first (Save…, Continue without, Cancel). The bridge's own work folder only ever holds
+the last exchange with PhotoCraft (region, mask, placeholder, result).
+
 ## Limits
 
 - The result is pasted through the clipboard (PhotoCraft does not let automation place a file into

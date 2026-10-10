@@ -10,7 +10,9 @@ back through a full-size transparent PNG pasted in place of the placeholder (``p
 from __future__ import annotations
 
 import io
+import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from xp_photocraft.config import (
     MASK_FILE,
     PLACED_FILE,
     PLACEHOLDER_FILE,
+    PROJECT_WORK_DIR,
     REGION_FILE,
     REMOVE_PROMPT,
 )
@@ -46,25 +49,40 @@ class NoSelectionError(RuntimeError):
 
 
 def fill_selection(
-    pc: Control, engine: Engine, prompt: str, seed: int, work: Path, layer_name: str
+    pc: Control,
+    engine: Engine,
+    prompt: str,
+    seed: int,
+    work: Path,
+    layer_name: str,
+    workflow: str = "",
 ) -> Rect:
     """Repaint the active document's selection from ``prompt``; return the placed layer's rect."""
-    return _repaint(pc, engine, prompt, seed, work, layer_name, mode="fill")
+    return _repaint(pc, engine, prompt, seed, work, layer_name, "fill", workflow)
 
 
-def remove_selection(pc: Control, engine: Engine, seed: int, work: Path, layer_name: str) -> Rect:
+def remove_selection(
+    pc: Control, engine: Engine, seed: int, work: Path, layer_name: str, workflow: str = ""
+) -> Rect:
     """Erase what the selection holds and rebuild the background; return the placed layer's rect.
 
     The model is shown PhotoCraft's classical Content-Aware Fill of the selection, not the
     object: given the object, the edit model redraws it (measured 2026-10-09 on the couple).
     """
-    return _repaint(pc, engine, REMOVE_PROMPT, seed, work, layer_name, mode="remove")
+    return _repaint(pc, engine, REMOVE_PROMPT, seed, work, layer_name, "remove", workflow)
 
 
 def _repaint(
-    pc: Control, engine: Engine, prompt: str, seed: int, work: Path, layer_name: str, mode: str
+    pc: Control,
+    engine: Engine,
+    prompt: str,
+    seed: int,
+    work: Path,
+    layer_name: str,
+    mode: str,
+    workflow: str,
 ) -> Rect:
-    active, doc_size, bounds = _active_selection(pc)
+    active, doc_path, doc_size, bounds = _active_selection(pc)
     crop = context_rect(bounds, doc_size, MARGIN_PX)
     _export_region(pc, active, crop, work / REGION_FILE, mode)
     _export_mask(pc, active, crop, work / MASK_FILE)
@@ -84,7 +102,45 @@ def _repaint(
         placeholder.discard(pc, holder)
         raise
     logger.info("%s placed at %s", layer_name, crop)
+    record: dict[str, object] = {
+        "document": doc_path,
+        "mode": mode,
+        "workflow": workflow,
+        "prompt": prompt,
+        "seed": seed,
+        "layer": layer_name,
+        "selection": [bounds.x, bounds.y, bounds.width, bounds.height],
+        "placed": [crop.x, crop.y, crop.width, crop.height],
+    }
+    archive_result(png, record, project_work_dir(doc_path, work))
     return crop
+
+
+def project_work_dir(doc_path: str, work: Path) -> Path | None:
+    """``xp-work/<document stem>`` next to the document; None for a document never saved.
+
+    A path relative to the automation root (a document the bridge opened itself) is resolved
+    against the work dir.
+    """
+    if not doc_path:
+        return None
+    path = Path(doc_path)
+    if not path.is_absolute():
+        path = work / path
+    return path.parent / PROJECT_WORK_DIR / path.stem
+
+
+def archive_result(png: bytes, record: dict[str, object], folder: Path | None) -> None:
+    """Keep the model's output and what made it next to the document (nothing without a folder)."""
+    if folder is None:
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{time.strftime('%Y%m%d-%H%M%S')}_{record['mode']}_{record['seed']}"
+        (folder / f"{name}.png").write_bytes(png)
+        (folder / f"{name}.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    except OSError as e:  # a read-only or vanished project folder must not fail the fill
+        logger.warning("result not archived in %s: %s", folder, e)
 
 
 def context_rect(bounds: Rect, doc_size: tuple[int, int], margin: int) -> Rect:
@@ -105,13 +161,16 @@ def write_placed(result: Image.Image, crop: Rect, doc_size: tuple[int, int], pat
     canvas.save(path)
 
 
-def _active_selection(pc: Control) -> tuple[int, tuple[int, int], Rect]:
-    active = int(pc.cmd("session.inspect")["active"])
+def _active_selection(pc: Control) -> tuple[int, str, tuple[int, int], Rect]:
+    session = pc.cmd("session.inspect")
+    active = int(session["active"])
+    docs = session.get("documents", [])
+    doc_path = str(next((d.get("path") or "" for d in docs if d.get("index") == active), ""))
     doc = pc.cmd("document.inspect")
     if not doc.get("hasSelection"):
         raise NoSelectionError("select the area to fill first")
     x, y, w, h = doc["selectionBounds"]
-    return active, (int(doc["width"]), int(doc["height"])), Rect(x, y, w, h)
+    return active, doc_path, (int(doc["width"]), int(doc["height"])), Rect(x, y, w, h)
 
 
 def _export_region(pc: Control, active: int, crop: Rect, path: Path, mode: str) -> None:
