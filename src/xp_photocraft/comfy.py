@@ -67,7 +67,7 @@ class Comfy:
         body = {"prompt": graph, "client_id": uuid.uuid4().hex, **self._extra}
         queued = self._http.post("/prompt", json=body)
         if queued.status_code != 200:
-            raise ComfyError(f"graph refused: {queued.text[:500]}")
+            raise ComfyError(f"graph refused: {_refusal(queued)}")
         history = self._wait(str(queued.json()["prompt_id"]))
         image = _pick_image(history["outputs"], output_node)
         view = self._http.get("/view", params=image)
@@ -91,6 +91,21 @@ class Comfy:
 def _basename(name: str) -> str:
     # Windows servers list subfolders with backslashes.
     return name.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _refusal(response: httpx.Response) -> str:
+    """Why ComfyUI refused a graph, on one line: a missing model is named, not dumped as JSON."""
+    try:
+        reply = response.json()
+    except ValueError:
+        return " ".join(response.text.split())[:300]
+    for node in reply.get("node_errors", {}).values():
+        for error in node.get("errors", []):
+            if error.get("type") == "value_not_in_list":
+                missing = error.get("extra_info", {}).get("received_value")
+                return f"{node.get('class_type')}: {missing} is not on the ComfyUI server"
+            return f"{node.get('class_type')}: {error.get('details') or error.get('message')}"[:300]
+    return str(reply.get("error", {}).get("message", "unknown reason"))[:300]
 
 
 def _execution_error(status: dict[str, Any]) -> str:

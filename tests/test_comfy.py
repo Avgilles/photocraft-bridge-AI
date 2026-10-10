@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
-from xp_photocraft.comfy import Comfy
+from xp_photocraft.comfy import Comfy, ComfyError
 
 
 def _comfy(api_key: str, sent: list[dict]) -> Comfy:
@@ -25,6 +26,28 @@ def _comfy(api_key: str, sent: list[dict]) -> Comfy:
     comfy = Comfy("http://comfy.test", api_key=api_key)
     comfy._http = httpx.Client(base_url="http://comfy.test", transport=httpx.MockTransport(handle))
     return comfy
+
+
+def test_a_missing_model_is_named_on_one_line() -> None:
+    # ComfyUI's answer to a graph whose VAE file is not on the server (seen 2026-10-10).
+    error = {"type": "value_not_in_list", "message": "Value not in list",
+             "details": "vae_name: 'qwen_image_2.1_vae_bf16.safetensors' not in [...]",
+             "extra_info": {"input_name": "vae_name",
+                            "received_value": "qwen_image_2.1_vae_bf16.safetensors"}}  # fmt: skip
+    body = {"error": {"type": "prompt_outputs_failed_validation"},
+            "node_errors": {"vae": {"errors": [error], "class_type": "VAELoader"}}}  # fmt: skip
+    comfy = Comfy("http://comfy.test")
+    comfy._http = httpx.Client(
+        base_url="http://comfy.test",
+        transport=httpx.MockTransport(lambda request: httpx.Response(400, json=body)),
+    )
+
+    with pytest.raises(ComfyError) as refused:
+        comfy.run({"vae": {}})
+
+    assert str(refused.value) == (
+        "graph refused: VAELoader: qwen_image_2.1_vae_bf16.safetensors is not on the ComfyUI server"
+    )
 
 
 def test_run_keeps_the_saved_image_and_passes_the_api_key_only_when_set() -> None:
