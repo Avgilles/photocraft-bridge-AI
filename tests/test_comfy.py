@@ -28,6 +28,42 @@ def _comfy(api_key: str, sent: list[dict]) -> Comfy:
     return comfy
 
 
+def test_loaders_follow_the_server_files_variant_and_subfolder() -> None:
+    # A server with the int8 variant (an RTX 30 install) and the LoRA in a subfolder.
+    names = {
+        "UNETLoader": ["qwen/qwen_image_edit_2511_int8_convrot.safetensors", "flux.safetensors"],
+        "LoraLoaderModelOnly": ["qwen/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"],
+    }
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        node = request.url.path.rsplit("/", 1)[-1]
+        name_input = "unet_name" if node == "UNETLoader" else "lora_name"
+        return httpx.Response(
+            200, json={node: {"input": {"required": {name_input: [names[node]]}}}}
+        )
+
+    comfy = Comfy("http://comfy.test")
+    comfy._http = httpx.Client(base_url="http://comfy.test", transport=httpx.MockTransport(handle))
+    unet, lora, shipped = (
+        "UNETLoader",
+        "LoraLoaderModelOnly",
+        "qwen_image_edit_2511_fp8mixed.safetensors",
+    )
+    graph = {
+        "unet": {"class_type": unet, "inputs": {"unet_name": shipped}},
+        "lora": {"class_type": lora, "inputs": {"lora_name": names[lora][0].split("/")[1]}},
+        "other": {"class_type": unet, "inputs": {"unet_name": "my_own_model.safetensors"}},
+    }  # fmt: skip
+
+    comfy.resolve_models(graph)
+
+    assert (
+        graph["unet"]["inputs"]["unet_name"] == "qwen/qwen_image_edit_2511_int8_convrot.safetensors"
+    )
+    assert graph["lora"]["inputs"]["lora_name"].startswith("qwen/")
+    assert graph["other"]["inputs"]["unet_name"] == "my_own_model.safetensors"  # not ours: as is
+
+
 def test_a_missing_model_is_named_on_one_line() -> None:
     # ComfyUI's answer to a graph whose VAE file is not on the server (seen 2026-10-10).
     error = {"type": "value_not_in_list", "message": "Value not in list",

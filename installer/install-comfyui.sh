@@ -6,6 +6,7 @@
 #   install-comfyui.sh [folder]        default: ComfyUI-xp next to this script
 #   XP_QWEN_VARIANT=int8               for RTX 30 series (int8 weights), default fp8mixed
 #   XP_SKIP_MODELS=1                   install ComfyUI only, no model download (~32 GB)
+#   XP_QWEN21=y                        also Qwen Image 2.1 Turbo (~18 GB) without asking (n: never)
 #
 # Needs about 40 GB of disk and the NVIDIA driver. Safe to re-run: resumes downloads, skips what is there.
 set -eu
@@ -21,6 +22,16 @@ echo
 echo " ComfyUI for xp-photocraft  ->  $root"
 echo " ---------------------------------------------------------------"
 command -v nvidia-smi >/dev/null || echo " WARNING: nvidia-smi not found. ComfyUI needs an NVIDIA GPU with its driver installed."
+
+# The optional second model, asked first: nobody waits half an hour for a question.
+if [ -z "${XP_QWEN21:-}" ]; then
+  echo
+  echo " Also install Qwen Image 2.1 Turbo, a second local model (about 18 GB more)?"
+  echo " Its licence (Qwen Research License) allows research and evaluation only: no commercial use."
+  read -r -p " Install it? [y/N] " XP_QWEN21 || XP_QWEN21=""
+fi
+case "${XP_QWEN21:-}" in [yY] | [yY][eE][sS]) qwen21=1 ;; *) qwen21="" ;; esac
+echo
 
 mkdir -p "$root"
 if [ ! -x "$uv" ]; then
@@ -71,6 +82,14 @@ else
   get text_encoders qwen_2.5_vl_7b_fp8_scaled.safetensors https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
   get vae qwen_image_vae.safetensors https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
   get loras Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+  if [ -n "$qwen21" ]; then
+    echo " [4/5] Qwen Image 2.1 Turbo (about 18 GB, resumable) ..."
+    q=https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main
+    get diffusion_models qwen_image_2.1_int8_convrot.safetensors "$q/diffusion_models/qwen_image_2.1_int8_convrot.safetensors"
+    get text_encoders qwen3vl_8b_int8_convrot.safetensors "$q/text_encoders/qwen3vl_8b_int8_convrot.safetensors"
+    get vae qwen_image_2.1_vae_bf16.safetensors "$q/vae/qwen_image_2.1_vae_bf16.safetensors"
+    get loras qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors "$q/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
+  fi
 fi
 
 echo " [5/5] Start script ..."

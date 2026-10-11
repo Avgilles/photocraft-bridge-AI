@@ -192,19 +192,17 @@ Action = Callable[[Control, Engine, int, Path, str], roundtrip.Rect]
 
 
 def _engine(reg: registry.Registry, workflow_id: str, server: str | None, root: Path) -> Engine:
-    """Build the workflow's engine; a ComfyUI one checks its models and graph up front."""
+    """Build the workflow's engine; a ComfyUI graph gets this server's model files first."""
     added = reg.workflows.get(workflow_id)
     if added and added.command:
         return Runner(added.command, root)
     comfy = Comfy(_server(server), api_key=_api_key())
-    if added is None:  # the built-in graph, its loaders pointed at this server's files
+    if added is None:  # the built-in graph shipped in the package
         graph = registry.load_graph(Path(__file__).with_name(BUILTIN_GRAPH))
-        models = comfy.find_models()
-        for node in graph.values():
-            node["inputs"].update(models.get(node["class_type"], {}))
-        return ComfyGraph(comfy, graph)
-    graph = registry.load_graph(_workflows_file().parent / added.graph)
-    return ComfyGraph(comfy, graph, added.prompt)
+    else:
+        graph = registry.load_graph(_workflows_file().parent / added.graph)
+    comfy.resolve_models(graph)
+    return ComfyGraph(comfy, graph, added.prompt if added else "{prompt}")
 
 
 def _run(

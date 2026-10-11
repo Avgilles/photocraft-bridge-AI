@@ -6,6 +6,7 @@ rem
 rem   install-comfyui.bat [folder]        default folder: ComfyUI-xp next to this script
 rem   set XP_QWEN_VARIANT=int8            for RTX 30 series (int8 weights), default fp8mixed
 rem   set XP_SKIP_MODELS=1                install ComfyUI only, no model download (~32 GB)
+rem   set XP_QWEN21=y                     also Qwen Image 2.1 Turbo (~18 GB) without asking (n: never)
 rem
 rem Needs about 40 GB of disk, a recent NVIDIA driver, and a good connection. Safe to re-run: it
 rem resumes downloads and skips what is already there.
@@ -26,6 +27,18 @@ echo.
 echo  ComfyUI for xp-photocraft  -^>  %ROOT%
 echo  ---------------------------------------------------------------
 where nvidia-smi >nul 2>nul || echo  WARNING: nvidia-smi not found. ComfyUI needs an NVIDIA GPU with its driver installed.
+
+rem --- The optional second model, asked first: nobody waits half an hour for a question ------------
+if not defined XP_QWEN21 (
+    echo.
+    echo  Also install Qwen Image 2.1 Turbo, a second local model ^(about 18 GB more^)?
+    echo  Its licence ^(Qwen Research License^) allows research and evaluation only: no commercial use.
+    set /p "XP_QWEN21= Install it? [y/N] "
+)
+set "QWEN21="
+if /i "%XP_QWEN21%"=="y" set "QWEN21=1"
+if /i "%XP_QWEN21%"=="yes" set "QWEN21=1"
+echo.
 
 rem --- uv: one tool that brings Python and installs packages, no admin rights ---------------------
 mkdir "%ROOT%" 2>nul
@@ -69,6 +82,13 @@ if "%XP_SKIP_MODELS%"=="1" (
     call :get text_encoders qwen_2.5_vl_7b_fp8_scaled.safetensors https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors || goto :fail
     call :get vae qwen_image_vae.safetensors https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors || goto :fail
     call :get loras Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors || goto :fail
+    if defined QWEN21 (
+        echo  [4/5] Qwen Image 2.1 Turbo ^(about 18 GB, resumable^) ...
+        call :get diffusion_models qwen_image_2.1_int8_convrot.safetensors https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors || goto :fail
+        call :get text_encoders qwen3vl_8b_int8_convrot.safetensors https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors || goto :fail
+        call :get vae qwen_image_2.1_vae_bf16.safetensors https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors || goto :fail
+        call :get loras qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors || goto :fail
+    )
 )
 
 rem --- Start script ---------------------------------------------------------------------------------

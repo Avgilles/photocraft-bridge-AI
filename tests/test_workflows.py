@@ -140,6 +140,27 @@ def test_a_graph_dropped_in_the_folder_is_listed_and_assignable(
     assert isinstance(engine, ComfyGraph)
 
 
+def test_the_builtin_file_in_the_folder_is_the_builtin_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "Comfy", _FakeComfy)
+    folder = tmp_path / "xp-photocraft" / "workflows"
+    folder.mkdir(parents=True)
+    graph = json.loads((Path(cli.__file__).with_name("qwen-edit-2511.api.json")).read_text("utf-8"))
+    graph["sampler"]["inputs"]["steps"] = 6  # the user's own setting
+    (folder / "Qwen Edit 2511 (ComfyUI).json").write_text(json.dumps(graph), encoding="utf-8")
+
+    listed = json.loads(CliRunner().invoke(cli.cli, ["workflows"]).stdout)
+    engine = cli._engine(
+        registry.load(folder.parent / "workflows.json"), "qwen-edit", None, tmp_path
+    )
+
+    assert [w["label"] for w in listed["workflows"]] == ["Qwen Edit 2511 (ComfyUI)"]  # once
+    assert listed["assign"] == {"fill": "qwen-edit", "remove": "qwen-edit"}
+    assert engine._graph["sampler"]["inputs"]["steps"] == 6  # type: ignore[attr-defined]
+
+
 def test_graph_carries_its_own_prompt_wording(tmp_path: Path) -> None:
     graph = json.loads(json.dumps(_GRAPH))
     graph["3"]["inputs"]["text"] = "Image 2 is a mask. In its white area: {prompt}."
@@ -205,6 +226,10 @@ class _FakeComfy:
 
     def find_models(self) -> dict[str, dict[str, str]]:
         return {"UNETLoader": {"unet_name": "qwen/edit_int8.safetensors"}}
+
+    def resolve_models(self, graph: dict[str, Any]) -> None:
+        for node in graph.values():
+            node["inputs"].update(self.find_models().get(node["class_type"], {}))
 
     def upload(self, file: Path) -> str:
         return f"up_{file.name}"

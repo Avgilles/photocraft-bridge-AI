@@ -86,7 +86,7 @@ class _FailingComfy(_FakeComfy):
 
     error: Exception = httpx.ConnectError("[WinError 10061] No connection could be made")
 
-    def find_models(self) -> object:
+    def resolve_models(self, graph: object) -> None:  # a run's first request to the server
         raise self.error
 
 

@@ -46,7 +46,8 @@ Double-click **`install-comfyui.bat`** (Linux: `./install-comfyui.sh`). It insta
 `ComfyUI-xp\`, next to it: the `uv` tool and a Python of its own, ComfyUI, PyTorch CUDA (chosen from
 your NVIDIA driver), the four files of the built-in workflow (Qwen Image Edit 2511, text encoder,
 VAE, Lightning LoRA, ~32 GB) and a **`start-comfyui.bat`**. Expect 3 GB then 32 GB of downloads; run
-it again and it resumes where it stopped.
+it again and it resumes where it stopped. It first asks whether to also install **Qwen Image 2.1
+Turbo** (~18 GB more, non-commercial use only, see § 5): answer `y` or just press Enter for no.
 
 - RTX 30 series (3090, 3080…): before running it, open a console, type `set XP_QWEN_VARIANT=int8`,
   then `install-comfyui.bat`; the int8 weights are faster on these cards.
@@ -91,8 +92,8 @@ node". The key is never shown, and only goes to your ComfyUI, which hands it to 
 The **XP** menu also offers *Qwen Image 2.1 Turbo (non-commercial)*: local, free, 12 to 15 s per
 generation on an RTX 3090, with a quality close to Nano Banana. **Its license (Qwen Research
 License) only allows research and evaluation**: for paid work, keep Qwen Edit 2511 (built in,
-Apache-2.0) or Nano Banana. It needs ComfyUI 0.39 or later and these four files (~18 GB), to put in
-the folders of `ComfyUI-xp\ComfyUI\models\`:
+Apache-2.0) or Nano Banana. `install-comfyui.bat` installs it if you answer `y` to its question;
+for a ComfyUI of your own (0.39 or later), put these four files (~18 GB) in its `models\` folders:
 
 | Folder | File ([Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main)) |
 |---|---|
@@ -103,7 +104,9 @@ the folders of `ComfyUI-xp\ComfyUI\models\`:
 
 ### Add your own workflows
 
-Any ComfyUI graph dropped in **`data\workflows\`** becomes a workflow, named after its file
+`data\workflows\` is the catalog: it starts with the three shipped workflows, the built-in one
+included (`Qwen Edit 2511 (ComfyUI).json`, the default for both actions). Any ComfyUI graph dropped
+in **`data\workflows\`** becomes a workflow, named after its file
 (`Flux Fill.json` → *Flux Fill*): menu **XP ▸ Open Workflows Folder**, drop the file, open the XP
 menu again, and pick it for *Generative fill* or *Remove (AI)*. In ComfyUI, save it with
 **Workflow ▸ Export (API)** after giving a few nodes a title (right click ▸ *Title*): `pc:image` on

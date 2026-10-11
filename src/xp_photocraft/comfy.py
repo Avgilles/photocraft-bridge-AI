@@ -40,17 +40,39 @@ class Comfy:
         found: dict[str, dict[str, str]] = {}
         missing: list[str] = []
         for node, (name_input, files) in BUILTIN_MODELS.items():
-            info = self._http.get(f"/object_info/{node}").json()
-            names: list[str] = info[node]["input"]["required"][name_input][0]
-            by_file = {_basename(n): n for n in names}
-            match = next((by_file[f] for f in files if f in by_file), None)
-            if match is None:
-                missing.append(files[0])
-            else:
+            match = self._server_file(node, name_input, files)
+            if match:
                 found[node] = {name_input: match}
+            else:
+                missing.append(files[0])
         if missing:
             raise ComfyError(f"models not on the ComfyUI server: {', '.join(missing)}")
         return found
+
+    def resolve_models(self, graph: dict[str, Any]) -> None:
+        """Point a graph's loaders of the built-in models at this server's files, in place.
+
+        Its own file in any subfolder first, else another variant (fp8mixed, int8_convrot,
+        bf16): the shipped graph names the template's files, a server may hold the others. A
+        file the server lacks is left as is, for ComfyUI to name in its refusal.
+        """
+        for node in graph.values():
+            spec = BUILTIN_MODELS.get(str(node.get("class_type")))
+            if spec is None or node["inputs"].get(spec[0]) not in spec[1]:
+                continue
+            name_input, files = spec
+            match = self._server_file(
+                node["class_type"], name_input, (node["inputs"][name_input], *files)
+            )
+            if match:
+                node["inputs"][name_input] = match
+
+    def _server_file(self, node: str, name_input: str, files: tuple[str, ...]) -> str:
+        """The server's name for the first of ``files`` it has (in any subfolder), else ""."""
+        info = self._http.get(f"/object_info/{node}").json()
+        names: list[str] = info[node]["input"]["required"][name_input][0]
+        by_file = {_basename(n): n for n in names}
+        return next((by_file[f] for f in files if f in by_file), "")
 
     def upload(self, file: Path) -> str:
         """Upload an input image and return the name ComfyUI stored it under."""

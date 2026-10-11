@@ -62,12 +62,15 @@ def load(path: Path) -> Registry:
     """Return ``path``'s registry plus every graph in the ``workflows`` folder beside it.
 
     A dropped file is a workflow named after it (``Flux Fill.json`` → ``Flux Fill``); an entry
-    of ``workflows.json`` with the same id wins.
+    of ``workflows.json`` with the same id wins. The file named after the built-in workflow
+    (``Qwen Edit 2511 (ComfyUI).json``, shipped with a release) *is* the built-in one: same id,
+    one menu entry, and editing it changes the default.
     """
     registry = _read(path)
     for graph in sorted((path.parent / WORKFLOWS_DIR).glob("*.json"), key=lambda p: p.stem.lower()):
+        workflow_id = BUILTIN_WORKFLOW if graph.stem == BUILTIN_LABEL else graph.stem
         registry.workflows.setdefault(
-            graph.stem, Workflow(label=graph.stem, graph=f"{WORKFLOWS_DIR}/{graph.name}")
+            workflow_id, Workflow(label=graph.stem, graph=f"{WORKFLOWS_DIR}/{graph.name}")
         )
     return registry
 

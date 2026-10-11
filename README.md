@@ -169,8 +169,11 @@ ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in a
 | `vae` | `qwen_image_vae.safetensors` |
 | `loras` | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` |
 
-The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json):
-copy it into the `workflows` folder under another name as a starting point for your own settings.
+The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json).
+A release puts it in the `workflows` folder as `Qwen Edit 2511 (ComfyUI).json`: that file *is* the
+built-in workflow (one menu entry; edit it to change the default, delete it and the copy inside the
+bridge takes over). Its loaders follow the server's files: the `int8_convrot` or `bf16` variant if
+that is what the server has, and any subfolder.
 
 ### Your own ComfyUI workflow
 
@@ -198,7 +201,8 @@ masked by your selection, whatever size the graph returns.
 
 [`examples/workflows/Qwen Image 2.1 Turbo (non-commercial).json`](examples/workflows/Qwen%20Image%202.1%20Turbo%20(non-commercial).json)
 edits with Qwen Image 2.1 and its Turbo LoRA (8 steps), ComfyUI core nodes only (ComfyUI 0.39 or
-later), the mask as its `<image2>`, generated at the region's size. Its files come from
+later), the mask as its `<image2>`, generated at the region's size. `install-comfyui` asks whether
+to install it; its files come from
 [Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) (about 18 GB):
 
 | Folder | File |
