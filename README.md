@@ -262,6 +262,8 @@ the last exchange with PhotoCraft (region, mask, placeholder, result).
 - One run leaves about twenty history steps (the placeholder's, then the result's), interleaved
   with yours when you keep working: undoing part of them brings the placeholder back.
 - One generation at a time.
+- PhotoCraft and a local ComfyUI share the graphics card: with 8 GB, a generation can take all of
+  it and PhotoCraft closes. Use ComfyUI on another PC, or Nano Banana, there.
 - The built-in workflow generates at one megapixel at most; very large selections lose
   detail.
 

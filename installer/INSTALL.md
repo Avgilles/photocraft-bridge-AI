@@ -24,6 +24,9 @@ executable, and the ComfyUI installer brings its own Python (through the `uv` to
 - To generate **locally**: an NVIDIA card. 24 GB of VRAM is comfortable (RTX 3090/4090/5090), 16 GB
   works; with 12 GB or less it is slow (the model spills into RAM): plan for 32 GB of RAM or more.
   No GPU: use the ComfyUI of another PC (§ 4) or Nano Banana (§ 5).
+- **PhotoCraft and ComfyUI share the card.** With 8 GB (most laptops), a generation can take all
+  of it and PhotoCraft closes (unsaved work is lost). There, run ComfyUI on another PC (§ 4) or
+  use Nano Banana (§ 5), which generates in the cloud.
 - About 40 GB of disk for ComfyUI and the models.
 
 ## 2. Install the bridge (Windows)
@@ -151,6 +154,9 @@ It checks, line by line: the work folder, the link with PhotoCraft (was it start
   `install-comfyui.bat` again (it resumes the downloads), or install the workflow's models (the
   *Qwen Image Edit 2511* template of ComfyUI for the built-in one).
 - First generation slow (~1 min): the models are loading; then 10 to 30 s depending on the card.
+- *PhotoCraft closes during a generation*: the graphics card is too small for PhotoCraft and
+  ComfyUI together (its log, `PhotoCraftData\logs\photocraft.log`, says "GPU device lost"). Run
+  ComfyUI on another PC (§ 4) or use Nano Banana (§ 5).
 - *Qwen Image 2.1 paints a black area* on a ComfyUI of your own: start it with `--fp32-text-enc`
   (`start-comfyui.bat` does). Without CUDA 13 kernels its text encoder overflows in fp16.
 
