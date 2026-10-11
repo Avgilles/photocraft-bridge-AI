@@ -1,15 +1,53 @@
 # xp-photocraft — ComfyUI for PhotoCraft
 
 **Generative Fill and Remove for [PhotoCraft](https://github.com/storytold/photocraft), on your own
-ComfyUI, with your own workflows.** Select an area in PhotoCraft; `fill` repaints it from a prompt,
-`remove` erases what is in it. The result comes back as a **new layer masked by your selection**:
-aligned, non-destructive, and the pixels outside the selection are left untouched.
+ComfyUI, with your own workflows.** Select an area in PhotoCraft, type what you want there, and the
+result comes back as a **new layer masked by your selection**: aligned, non-destructive, and the
+pixels outside the selection are left untouched.
+
+![Before and after: a licence plate filled in, the man and his shadow removed, a dragon on each side](docs/before-after.jpg)
+
+*Before / after, in four selections: a licence plate typed in, the man and his shadow removed, a
+dragon on the left by Qwen Image 2.1 Turbo on the PC's own GPU, a dragon on the right by Nano Banana
+in the cloud.*
+<!-- Demo video (YouTube): add the link here. -->
 
 Generation runs on a ComfyUI server you control (this PC, or another PC with a GPU) with any
 workflow you like: the built-in Qwen Image Edit graph, a graph you exported from ComfyUI (Flux Fill,
-SDXL inpainting, a partner node such as Nano Banana…), or any command of your own. Nothing is
-installed in PhotoCraft: the bridge drives it through its control protocol and talks to ComfyUI over
-its HTTP API.
+SDXL inpainting, a partner node such as Nano Banana…), or any command of your own. You pick the
+model for each action from PhotoCraft's menu.
+
+## Quick start (Windows)
+
+1. From [Releases](https://github.com/Avgilles/xp-photocraft/releases), download
+   `xp-photocraft-…-windows-x64.zip` (the bridge) and `PhotoCraft-XP-windows-x64.zip` (PhotoCraft
+   with the task bar), and unzip both into one empty folder, e.g. `C:\PhotoCraftXP`.
+2. Run `install.bat`, then `install-comfyui.bat` (ComfyUI, PyTorch and the built-in model, ~35 GB,
+   NVIDIA GPU), then `start-comfyui.bat`.
+3. Run `start-photocraft.bat`, open an image, select an area and use the bar under the selection.
+
+Nothing else to install first (no Python, no Git), and everything stays in that folder: delete it to
+uninstall. The step-by-step guide, with ComfyUI on another PC and Nano Banana, is
+[`installer/INSTALL.md`](installer/INSTALL.md). On Linux, the bridge's `.tar.gz` works the same way
+with its `.sh` scripts; build PhotoCraft from [the fork](https://github.com/Avgilles/photocraft).
+
+## In PhotoCraft
+
+![The task bar under a selection: prompt, Generative fill, Remove, Remove (AI), Inverse, Mask, Deselect](docs/task-bar.jpg)
+
+- **Generative fill**: type what you want in the bar's field and click. A crossed card covers the
+  selection while it generates and you keep working; the result replaces it.
+- **Remove (AI)**: erases what is selected and rebuilds the background (include the shadow).
+- **Remove** is PhotoCraft's classic fill; *Inverse*, *Mask* and *Deselect* act on the selection.
+- **XP menu** (last in the menu bar): the model each action runs (built-in Qwen Edit 2511, Nano
+  Banana, Qwen Image 2.1 Turbo, or your own graphs), *Open Workflows Folder*, and the ComfyUI server.
+
+## Status
+
+First release (0.1.0). Tested on Windows 11 (RTX 4060 laptop, 8 GB), with ComfyUI on the same PC
+or on a Fedora 41 PC (RTX 3090) through an SSH tunnel. The Linux bridge installs and connects but has
+seen less use; macOS is untested; PhotoCraft XP is only built for Windows so far. One generation at
+a time; see [Limits](#limits).
 
 ## How it works
 
@@ -33,15 +71,15 @@ xp-photocraft ── control protocol (loopback) ──► export region + margi
 - `remove` first shows the model PhotoCraft's classical Content-Aware Fill of the selection: given
   the object itself, an edit model tends to redraw it.
 
-## Requirements
+## Install from source
+
+The releases need nothing else; from source you need:
 
 - PhotoCraft desktop, started with its control server and the bridge's work folder as automation
   roots (below). The [PhotoCraft fork](https://github.com/Avgilles/photocraft) adds a task bar under
   the selection and an **XP** menu that run this bridge; the command line works with any PhotoCraft.
 - A ComfyUI server, with the models of the workflows you use (see [Workflows](#workflows)).
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/).
-
-## Install
 
 ```bash
 uv tool install git+https://github.com/Avgilles/xp-photocraft
@@ -69,7 +107,9 @@ photocraft --control 7878 --control-token-file "$work/control.token" \
   --automation-read-root "$work" --automation-write-root "$work"
 ```
 
-## Use
+## Command line
+
+The fork's task bar runs these commands; you can run them yourself too:
 
 ```bash
 xp-photocraft fill --prompt "a clean white licence plate, same night lighting"
@@ -213,6 +253,19 @@ the last exchange with PhotoCraft (region, mask, placeholder, result).
 - The built-in workflow generates at one megapixel at most; very large selections lose
   detail.
 
+## Credits
+
+- [PhotoCraft](https://github.com/storytold/photocraft) by storytold, the app this bridge drives
+  (MIT or Apache-2.0); the PhotoCraft XP build adds only the task bar and the XP menu.
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI), and the model files repackaged by
+  [Comfy-Org](https://huggingface.co/Comfy-Org).
+- Qwen Image Edit 2511 and Qwen Image 2.1 by the [Qwen team](https://github.com/QwenLM); the
+  Lightning LoRA by [lightx2v](https://huggingface.co/lightx2v); Nano Banana (Gemini) through
+  comfy.org's partner nodes.
+
+An independent project, not affiliated with any of them.
+
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option, like PhotoCraft.
+The models keep their own licenses (see each workflow above).
