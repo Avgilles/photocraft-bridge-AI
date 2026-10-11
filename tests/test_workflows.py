@@ -161,6 +161,13 @@ def test_the_builtin_file_in_the_folder_is_the_builtin_workflow(
     assert engine._graph["sampler"]["inputs"]["steps"] == 6  # type: ignore[attr-defined]
 
 
+def test_the_shipped_builtin_file_is_the_packaged_graph() -> None:
+    # Two copies: the package's (source installs) and the release catalog's. One graph.
+    packaged = Path(cli.__file__).with_name("qwen-edit-2511.api.json")
+    shipped = Path(__file__).parents[1] / "examples" / "workflows" / "Qwen Edit 2511 (ComfyUI).json"
+    assert json.loads(shipped.read_text("utf-8")) == json.loads(packaged.read_text("utf-8"))
+
+
 def test_graph_carries_its_own_prompt_wording(tmp_path: Path) -> None:
     graph = json.loads(json.dumps(_GRAPH))
     graph["3"]["inputs"]["text"] = "Image 2 is a mask. In its white area: {prompt}."

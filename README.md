@@ -170,7 +170,8 @@ ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in a
 | `loras` | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` |
 
 The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json).
-A release puts it in the `workflows` folder as `Qwen Edit 2511 (ComfyUI).json`: that file *is* the
+A release puts it in the `workflows` folder as
+[`Qwen Edit 2511 (ComfyUI).json`](examples/workflows/Qwen%20Edit%202511%20(ComfyUI).json): that file *is* the
 built-in workflow (one menu entry; edit it to change the default, delete it and the copy inside the
 bridge takes over). Its loaders follow the server's files: the `int8_convrot` or `bf16` variant if
 that is what the server has, and any subfolder.

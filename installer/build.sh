@@ -23,8 +23,6 @@ cp "$repo/dist/pyinstaller/linux/xp-photocraft" "$out/"
 for f in install.sh start-photocraft.sh install-comfyui.sh INSTALL.md; do cp "$repo/installer/$f" "$out/"; done
 cp "$repo/installer/.env.example" "$repo/LICENSE-MIT" "$repo/LICENSE-APACHE" "$out/"
 cp -r "$repo/examples/workflows" "$out/workflows"
-# The built-in workflow too, as the file that is it (see registry.load): the catalog is the folder.
-cp "$repo/src/xp_photocraft/qwen-edit-2511.api.json" "$out/workflows/Qwen Edit 2511 (ComfyUI).json"
 echo "This file keeps xp-photocraft portable: its data (connection, workflows, work folder) lives in data/ next to it." > "$out/portable.txt"
 chmod +x "$out"/*.sh "$out/xp-photocraft"
 tar -czf "$out.tar.gz" -C "$repo/dist/release" "$name"
