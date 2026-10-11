@@ -15,5 +15,6 @@ Thumbs.db
 # Machine-local
 .env
 .env.*
+!.env.example
 
 build/
