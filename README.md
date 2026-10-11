@@ -1,9 +1,10 @@
-# xp-photocraft — ComfyUI for PhotoCraft
+# PhotoCraft Bridge AI — ComfyUI for PhotoCraft
 
 **Generative Fill and Remove for [PhotoCraft](https://github.com/storytold/photocraft), on your own
 ComfyUI, with your own workflows.** Select an area in PhotoCraft, type what you want there, and the
 result comes back as a **new layer masked by your selection**: aligned, non-destructive, and the
-pixels outside the selection are left untouched.
+pixels outside the selection are left untouched. The bridge is the `xp-photocraft` command
+(`xp-photocraft.exe` in the releases).
 
 ![Before and after: a licence plate filled in, the man and his shadow removed, a dragon on each side](docs/before-after.jpg)
 
@@ -19,7 +20,7 @@ model for each action from PhotoCraft's menu.
 
 ## Quick start (Windows)
 
-1. From [Releases](https://github.com/Avgilles/xp-photocraft/releases), download
+1. From [Releases](https://github.com/Avgilles/photocraft-bridge-AI/releases), download
    `xp-photocraft-…-windows-x64.zip` (the bridge) and `PhotoCraft-XP-windows-x64.zip` (PhotoCraft
    with the task bar), and unzip both into one empty folder, e.g. `C:\PhotoCraftXP`.
 2. Run `install.bat`, then `install-comfyui.bat` (ComfyUI, PyTorch and the built-in model, ~35 GB,
@@ -82,7 +83,7 @@ The releases need nothing else; from source you need:
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv tool install git+https://github.com/Avgilles/xp-photocraft
+uv tool install git+https://github.com/Avgilles/photocraft-bridge-AI
 xp-photocraft connect http://127.0.0.1:8188   # your ComfyUI; saved for every run
 xp-photocraft doctor                          # checks PhotoCraft, ComfyUI, workflows, models
 ```
