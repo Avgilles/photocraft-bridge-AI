@@ -9,7 +9,12 @@ mkdir -p "$work"
 # This folder first on PATH: PhotoCraft's task bar runs the bridge that sits next to this script.
 export PATH="$here:$PATH"
 pc="${1:-}"
-[ -n "$pc" ] || for d in "$here"/PhotoCraft* "$here"/../PhotoCraft*; do [ -x "$d/photocraft" ] && { pc="$d/photocraft"; break; }; done
+# A PhotoCraft* folder here, one or two levels up (an archive tool may add a folder per archive),
+# possibly inside one more PhotoCraft* folder.
+[ -n "$pc" ] || for d in "$here"/PhotoCraft* "$here"/../PhotoCraft* "$here"/../../PhotoCraft* \
+  "$here"/../PhotoCraft*/PhotoCraft* "$here"/../../PhotoCraft*/PhotoCraft*; do
+  [ -x "$d/photocraft" ] && { pc="$d/photocraft"; break; }
+done
 [ -n "$pc" ] || pc="$(command -v photocraft || true)"
 [ -n "$pc" ] || { echo "photocraft not found: start-photocraft /path/to/photocraft"; exit 1; }
 exec "$pc" --control 7878 --control-token-file "$work/control.token" \
