@@ -97,7 +97,9 @@ echo  [5/5] Start script ...
     echo @echo off
     echo rem ComfyUI for xp-photocraft, on this PC only ^(127.0.0.1^). Keep this window open while you work.
     echo cd /d "%ROOT%\ComfyUI"
-    echo .venv\Scripts\python.exe main.py --listen 127.0.0.1 --port 8188 --preview-method auto
+    echo rem --fp32-text-enc: without CUDA 13 kernels, Qwen Image 2.1's int8 text encoder overflows in fp16
+    echo rem ^(black results^); fp32 keeps Qwen Edit 2511's text exact too, at no visible cost.
+    echo .venv\Scripts\python.exe main.py --listen 127.0.0.1 --port 8188 --preview-method auto --fp32-text-enc
     echo pause
 )
 echo.

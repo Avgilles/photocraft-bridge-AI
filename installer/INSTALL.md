@@ -149,6 +149,8 @@ It checks, line by line: the work folder, the link with PhotoCraft (was it start
   `install-comfyui.bat` again (it resumes the downloads), or install the workflow's models (the
   *Qwen Image Edit 2511* template of ComfyUI for the built-in one).
 - First generation slow (~1 min): the models are loading; then 10 to 30 s depending on the card.
+- *Qwen Image 2.1 paints a black area* on a ComfyUI of your own: start it with `--fp32-text-enc`
+  (`start-comfyui.bat` does). Without CUDA 13 kernels its text encoder overflows in fp16.
 
 ## 8. Uninstall
 

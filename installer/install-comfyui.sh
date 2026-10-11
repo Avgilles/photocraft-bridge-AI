@@ -97,7 +97,9 @@ cat > "$root/start-comfyui.sh" <<EOF
 #!/usr/bin/env bash
 # ComfyUI for xp-photocraft, on this PC only (127.0.0.1). Keep this terminal open while you work.
 cd "$root/ComfyUI"
-exec .venv/bin/python main.py --listen 127.0.0.1 --port 8188 --preview-method auto
+# --fp32-text-enc: without CUDA 13 kernels, Qwen Image 2.1's int8 text encoder overflows in fp16
+# (black results); fp32 keeps Qwen Edit 2511's text exact too, at no visible cost.
+exec .venv/bin/python main.py --listen 127.0.0.1 --port 8188 --preview-method auto --fp32-text-enc
 EOF
 chmod +x "$root/start-comfyui.sh"
 echo

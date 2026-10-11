@@ -215,6 +215,9 @@ to install it; its files come from
 
 On the demo's four gestures (a plate, a logo, a person and their shadow, a dragon), with one RTX
 3090, it took 12 to 15 s each, against 18 to 47 s for Nano Banana, at a comparable quality.
+On a ComfyUI without PyTorch CUDA 13 (an older NVIDIA driver), start it with `--fp32-text-enc`
+(the installer's `start-comfyui` does): otherwise the int8 text encoder overflows in fp16 and the
+area comes back black.
 **Its weights are for research and evaluation only** (Qwen Research License: "You shall not use
 the Materials for any commercial purpose without obtaining a separate commercial license"); for
 paid work, use the built-in Qwen Image Edit 2511 (Apache-2.0) or a commercial model.
