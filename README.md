@@ -9,9 +9,11 @@ pixels outside the selection are left untouched. The bridge is the `xp-photocraf
 ![Before and after: a licence plate filled in, the man and his shadow removed, a dragon on each side](docs/before-after.jpg)
 
 *Before / after, in four selections: a licence plate typed in, the man and his shadow removed, a
-dragon on the left by Qwen Image 2.1 Turbo on the PC's own GPU, a dragon on the right by Nano Banana
+dragon on the left by Qwen Image 2.1 Turbo on a local GPU, a dragon on the right by Nano Banana
 in the cloud.*
-<!-- Demo video (YouTube): add the link here. -->
+
+**Videos:** [the 2-minute demo](https://youtu.be/Znu5G5QCVYk) ·
+[installing on Windows, step by step](https://youtu.be/XhTdAG_x7qA)
 
 Generation runs on a ComfyUI server you control (this PC, or another PC with a GPU) with any
 workflow you like: the built-in Qwen Image Edit graph, a graph you exported from ComfyUI (Flux Fill,
