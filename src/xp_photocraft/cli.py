@@ -20,7 +20,7 @@ import click
 import httpx
 from pydantic import BaseModel
 
-from xp_photocraft import connection, registry, roundtrip
+from xp_photocraft import __version__, connection, registry, roundtrip
 from xp_photocraft.comfy import Comfy, ComfyError
 from xp_photocraft.config import (
     ACTIONS,
@@ -255,7 +255,7 @@ def _run(
 
 
 @click.group()
-@click.version_option(package_name="xp-photocraft")
+@click.version_option(version=__version__, prog_name="xp-photocraft")
 def cli() -> None:
     """xp-photocraft: ComfyUI actions on the selection of a running PhotoCraft."""
 

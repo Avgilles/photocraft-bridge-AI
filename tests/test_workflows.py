@@ -161,6 +161,18 @@ def test_the_builtin_file_in_the_folder_is_the_builtin_workflow(
     assert engine._graph["sampler"]["inputs"]["steps"] == 6  # type: ignore[attr-defined]
 
 
+def test_the_package_version_is_pyproject_s() -> None:
+    import tomllib
+
+    import xp_photocraft
+
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    assert (
+        tomllib.loads(pyproject.read_text("utf-8"))["project"]["version"]
+        == xp_photocraft.__version__
+    )
+
+
 def test_the_shipped_builtin_file_is_the_packaged_graph() -> None:
     # Two copies: the package's (source installs) and the release catalog's. One graph.
     packaged = Path(cli.__file__).with_name("qwen-edit-2511.api.json")

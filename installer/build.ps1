@@ -11,7 +11,7 @@ $out = Join-Path $repo "dist\release\$name"
 
 uv run --with pyinstaller pyinstaller --noconfirm --clean --onefile --console --name xp-photocraft `
     --add-data "$repo\src\xp_photocraft\qwen-edit-2511.api.json;xp_photocraft" `
-    --copy-metadata xp-photocraft --paths "$repo\src" `
+    --paths "$repo\src" `
     --distpath "$repo\dist\pyinstaller\windows" --workpath "$repo\build\pyinstaller" --specpath "$repo\build" `
     installer\entry.py
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed" }

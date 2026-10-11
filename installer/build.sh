@@ -14,7 +14,7 @@ out="$repo/dist/release/$name"
 
 uv run --python 3.11 --with pyinstaller pyinstaller --noconfirm --clean --onefile --console --name xp-photocraft \
   --add-data "$repo/src/xp_photocraft/qwen-edit-2511.api.json:xp_photocraft" \
-  --copy-metadata xp-photocraft --paths "$repo/src" \
+  --paths "$repo/src" \
   --distpath "$repo/dist/pyinstaller/linux" --workpath "$repo/build/pyinstaller" --specpath "$repo/build" \
   installer/entry.py
 
