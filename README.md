@@ -36,6 +36,9 @@ with its `.sh` scripts; build PhotoCraft from [the fork](https://github.com/Avgi
 
 ![The task bar under a selection: prompt, Generative fill, Remove, Remove (AI), Inverse, Mask, Deselect](docs/task-bar.jpg)
 
+The bar shows under any selection once PhotoCraft XP runs for the bridge (`start-photocraft.bat`
+starts it with its control server):
+
 - **Generative fill**: type what you want in the bar's field and click. A crossed card covers the
   selection while it generates and you keep working; the result replaces it.
 - **Remove (AI)**: erases what is selected and rebuilds the background (include the shadow).

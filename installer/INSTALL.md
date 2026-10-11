@@ -142,7 +142,9 @@ xp-photocraft doctor
 It checks, line by line: the work folder, the link with PhotoCraft (was it started by
 `start-photocraft`?), the ComfyUI server, the workflows and their models.
 
-- *"PhotoCraft does not answer"*: PhotoCraft was not started by `start-photocraft.bat`.
+- *No task bar under the selection*, or *"PhotoCraft does not answer"*: PhotoCraft was not started by
+  `start-photocraft.bat` (the bar only shows when PhotoCraft runs with the control server the bridge
+  needs).
 - *"ComfyUI server unreachable"*: ComfyUI is not running, or the saved address is wrong
   (`xp-photocraft connect …`).
 - *"… is not on the ComfyUI server"* or *"models not on the ComfyUI server"*: run
