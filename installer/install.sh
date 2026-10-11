@@ -34,7 +34,10 @@ fi
 
 echo
 echo " Testing the ComfyUI connection ..."
-if ! "$here/xp-photocraft" connect http://127.0.0.1:8188 2>/dev/null; then
+# Quiet: the command's report and its JSON line are for the task bar, not for this terminal.
+if "$here/xp-photocraft" connect http://127.0.0.1:8188 >/dev/null 2>&1; then
+  echo " ComfyUI:    connected on http://127.0.0.1:8188"
+else
   echo " No ComfyUI on http://127.0.0.1:8188 yet. Either run install-comfyui.sh (this PC, NVIDIA GPU),"
   echo " or connect to another PC later with:  xp-photocraft connect http://ADDRESS:8188"
 fi

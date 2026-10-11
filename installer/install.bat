@@ -18,7 +18,7 @@ echo  Folder:     %HERE%
 
 rem The user PATH, kept as is otherwise (PowerShell keeps %%VAR%% entries intact; setx would expand them).
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$p=[Environment]::GetEnvironmentVariable('Path','User'); if (($p -split ';') -notcontains '%HERE%') { [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ';%HERE%'), 'User'); 'PATH:       added this folder (programs started from now on see it)' } else { 'PATH:       already there' }"
+  "$p=[Environment]::GetEnvironmentVariable('Path','User'); if (($p -split ';') -notcontains '%HERE%') { [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ';%HERE%'), 'User'); ' PATH:       added this folder (programs started from now on see it)' } else { ' PATH:       already there' }"
 set "PATH=%PATH%;%HERE%"
 
 mkdir "%HERE%\data\work" 2>nul
@@ -33,7 +33,9 @@ if not exist "%HERE%\data\.env" (
 
 echo.
 echo  Testing the ComfyUI connection ...
-"%HERE%\xp-photocraft.exe" connect http://127.0.0.1:8188 2>nul
+rem Quiet: the command's report and its JSON line are for the task bar, not for this console.
+"%HERE%\xp-photocraft.exe" connect http://127.0.0.1:8188 >nul 2>nul
+if not errorlevel 1 echo  ComfyUI:    connected on http://127.0.0.1:8188
 if errorlevel 1 (
     echo  No ComfyUI on http://127.0.0.1:8188 yet. Either run install-comfyui.bat ^(this PC, NVIDIA GPU^),
     echo  or connect to another PC later with:  xp-photocraft connect http://ADDRESS:8188
