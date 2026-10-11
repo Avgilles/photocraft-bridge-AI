@@ -26,6 +26,10 @@ rem The shipped workflows; a file already there (maybe edited) is kept.
 mkdir "%HERE%\data\workflows" 2>nul
 for %%f in ("%HERE%\workflows\*.json") do if not exist "%HERE%\data\workflows\%%~nxf" copy "%%f" "%HERE%\data\workflows\" >nul
 echo  Workflows:  data\workflows\ ^(drop a graph exported from ComfyUI there^)
+if not exist "%HERE%\data\.env" (
+    copy "%HERE%\.env.example" "%HERE%\data\.env" >nul
+    echo  Settings:   data\.env ^(your comfy.org API key goes there, for Nano Banana^)
+)
 
 echo.
 echo  Testing the ComfyUI connection ...
