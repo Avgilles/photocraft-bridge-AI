@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -45,3 +46,23 @@ def test_call_reconnects_only_after_idling(
     server.close()
 
     assert len(accepted) == connections
+
+
+def test_exclusive_lets_one_run_edit_photocraft_at_a_time(tmp_path: Path) -> None:
+    order: list[str] = []
+    inside = threading.Event()
+
+    def first() -> None:
+        with control.exclusive(tmp_path):
+            inside.set()
+            time.sleep(0.3)  # the second run asks meanwhile
+            order.append("first done")
+
+    thread = threading.Thread(target=first)
+    thread.start()
+    inside.wait()
+    with control.exclusive(tmp_path):
+        order.append("second in")
+    thread.join()
+
+    assert order == ["first done", "second in"]

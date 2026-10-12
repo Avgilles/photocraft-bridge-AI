@@ -9,5 +9,6 @@
       "command": ["python", "/path/to/my_runner.py"]
     }
   },
-  "assign": {"fill": "Nano Banana 2.1 (comfy.org)", "remove": "qwen-edit"}
+  "assign": {"fill": "Nano Banana 2.1 (comfy.org)", "remove": "qwen-edit"},
+  "favorites": ["Nano Banana 2.1 (comfy.org)"]
 }

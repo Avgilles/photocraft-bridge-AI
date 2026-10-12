@@ -3,12 +3,20 @@
 ``add`` pastes a placeholder card over the selection (a crossed frame naming the action and the
 prompt), masked by the selection, and hands the artist's layer back. The generation then runs
 without touching PhotoCraft. ``place`` finds the document again (by name, then by the placeholder
-layer), pastes the result just
-above the placeholder, masks it with the placeholder's mask (the selection), deletes the
-placeholder and restores whatever document, layer and selection the artist has by then.
+layer), pastes the result just above the placeholder, masks it with the placeholder's mask (the
+selection), deletes the placeholder and restores whatever document, layer and selection the
+artist has by then.
 
-Deleting the placeholder meanwhile cancels the run for good: a ``Watch`` is asked at every poll
-of the generation, which is then stopped. Undoing the deletion brings the card back alone.
+A run of several variations puts the card in a group that carries the selection's mask:
+``place_variation`` pastes each result into it as it comes (the first one shown, the others
+hidden), and the card goes with the first. ``finish`` names the group once the run is over.
+
+Deleting the placeholder (the group, for variations) meanwhile cancels the run for good: a
+``Watch`` is asked at every poll of the generation, which is then stopped. Undoing the deletion
+brings the card back alone.
+
+Each of these edits one document through several commands; they share one undo step
+(PhotoCraft's ``coalesce``), so a run never pushes the artist's own steps out of History.
 """
 
 from __future__ import annotations
@@ -22,7 +30,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from xp_photocraft.config import LAYER_CHECK_S, PLACED_FILE
+from xp_photocraft.config import LAYER_CHECK_S
 from xp_photocraft.control import Control, ControlError
 
 logger = logging.getLogger(__name__)
@@ -50,6 +58,23 @@ class Placeholder:
     # The document's revision once it was added: any edit, layer or selection change moves it
     # (switching documents does not), which tells whether the artist worked there meanwhile.
     revision: int
+    # The group holding the card and the variations; 0 for a single result.
+    group: int = 0
+
+    @property
+    def watched(self) -> int:
+        """The layer whose deletion cancels the run: the group, else the card."""
+        return self.group or self.layer
+
+
+class _Step:
+    """Edits of one document that share one undo step (PhotoCraft's ``coalesce`` key)."""
+
+    def __init__(self, pc: Control, key: str) -> None:
+        self._pc, self._key = pc, key
+
+    def edit(self, command: str, params: dict[str, Any] | None = None) -> Any:
+        return self._pc.cmd(command, {**(params or {}), "coalesce": self._key})
 
 
 def draw_card(
@@ -81,41 +106,104 @@ def draw_card(
     canvas.save(path)
 
 
-def add(pc: Control, card: Path, layer_name: str) -> Placeholder:
-    """Paste ``card`` over the active document's selection as the placeholder layer."""
+def add(pc: Control, card: str, layer_name: str, step: str, group: str = "") -> Placeholder:
+    """Paste ``card`` over the active document's selection as the placeholder layer.
+
+    ``card`` is a path under the automation root. With a ``group`` name, the card goes into a
+    new group of that name, which carries the selection's mask (a run of variations).
+    """
+    edits = _Step(pc, step)
     doc = pc.cmd("document.inspect")
     active = int(pc.cmd("session.inspect")["active"])
-    pc.cmd("select.saveSelection", {"name": SELECTION_CHANNEL})
+    edits.edit("select.saveSelection", {"name": SELECTION_CHANNEL})
     try:
-        _copy_file(pc, card.name)
+        _copy_file(pc, card)
         pc.cmd("document.activate", {"document": active})
-        pc.cmd("edit.pasteSpecial.pasteInPlace")
+        edits.edit("edit.pasteSpecial.pasteInPlace")
         layer = int(pc.cmd("document.inspect")["activeLayer"])
-        pc.cmd("layer.setProps", {"layer": layer, "name": f"{layer_name} ({GENERATING})"})
-        pc.cmd("select.loadSelection", {"channel": SELECTION_CHANNEL})
-        pc.cmd("layer.layerMask.revealSelection")
+        edits.edit("layer.setProps", {"layer": layer, "name": f"{layer_name} ({GENERATING})"})
+        group_id = 0
+        if group:
+            group_id = int(edits.edit("layer.new.group", {"name": group})["layer"])
+            edits.edit("layer.moveTo", {"layer": layer, "target": group_id, "position": "into"})
+        edits.edit("select.loadSelection", {"channel": SELECTION_CHANNEL})
+        edits.edit("layer.layerMask.revealSelection", {"layer": group_id or layer})
     finally:
-        pc.cmd("channel.delete", {"channel": SELECTION_CHANNEL})
+        edits.edit("channel.delete", {"channel": SELECTION_CHANNEL})
     if doc.get("activeLayer") is not None:
         pc.cmd("layer.select", {"layer": doc["activeLayer"]})
-    return Placeholder(str(doc["name"]), layer, int(pc.cmd("document.inspect")["revision"]))
+    revision = int(pc.cmd("document.inspect")["revision"])
+    return Placeholder(str(doc["name"]), layer, revision, group_id)
 
 
-def place(pc: Control, placeholder: Placeholder, layer_name: str) -> None:
-    """Replace the placeholder by the result in ``PLACED_FILE``, masked like the placeholder."""
+def place(pc: Control, placeholder: Placeholder, placed: str, layer_name: str, step: str) -> int:
+    """Replace the placeholder by the result in ``placed``, masked like the placeholder.
+
+    Return the result's layer id.
+    """
+    edits = _Step(pc, step)
     artist_doc = int(pc.cmd("session.inspect")["active"])
     _activate(pc, placeholder)  # fails early, before the clipboard is touched
-    _copy_file(pc, PLACED_FILE)
+    _copy_file(pc, placed)
     doc = _activate(pc, placeholder)
     if doc["hasSelection"]:
-        pc.cmd("select.saveSelection", {"name": ARTIST_CHANNEL})
+        edits.edit("select.saveSelection", {"name": ARTIST_CHANNEL})
     pc.cmd("layer.select", {"layer": placeholder.layer})
-    pc.cmd("edit.pasteSpecial.pasteInPlace")
-    pc.cmd("layer.setProps", {"name": layer_name})
-    pc.cmd("select.loadSelection", {"channel": "mask", "layer": placeholder.layer})
-    pc.cmd("layer.layerMask.revealSelection")
-    pc.cmd("layer.delete", {"layer": placeholder.layer})
-    _restore(pc, doc, placeholder, artist_doc)
+    edits.edit("edit.pasteSpecial.pasteInPlace")
+    result = int(pc.cmd("document.inspect")["activeLayer"])
+    edits.edit("layer.setProps", {"layer": result, "name": layer_name})
+    edits.edit("select.loadSelection", {"channel": "mask", "layer": placeholder.layer})
+    edits.edit("layer.layerMask.revealSelection", {"layer": result})
+    edits.edit("layer.delete", {"layer": placeholder.layer})
+    _restore(pc, edits, doc, placeholder, artist_doc, result)
+    return result
+
+
+def place_variation(
+    pc: Control,
+    placeholder: Placeholder,
+    placed: str,
+    layer_name: str,
+    shown: bool,
+    group_name: str,
+    step: str,
+) -> int:
+    """Paste the result in ``placed`` into the group, on top, shown or hidden; rename the group.
+
+    The card leaves with the first variation. Return the variation's layer id.
+    """
+    edits = _Step(pc, step)
+    artist_doc = int(pc.cmd("session.inspect")["active"])
+    _activate(pc, placeholder)
+    _copy_file(pc, placed)
+    doc = _activate(pc, placeholder)
+    children = _find(doc["layers"], placeholder.group).get("children", [])
+    if doc["hasSelection"]:
+        edits.edit("select.saveSelection", {"name": ARTIST_CHANNEL})
+    # Pasted above the active layer: a child of the group, so the result lands inside it.
+    pc.cmd("layer.select", {"layer": children[0]["id"]})
+    edits.edit("edit.pasteSpecial.pasteInPlace")
+    result = int(pc.cmd("document.inspect")["activeLayer"])
+    edits.edit("layer.setProps", {"layer": result, "name": layer_name, "visible": shown})
+    if any(child["id"] == placeholder.layer for child in children):
+        edits.edit("layer.delete", {"layer": placeholder.layer})
+    edits.edit("layer.setProps", {"layer": placeholder.group, "name": group_name})
+    _restore(pc, edits, doc, placeholder, artist_doc, placeholder.group)
+    return result
+
+
+def finish(pc: Control, placeholder: Placeholder, group_name: str, step: str) -> None:
+    """End a run of variations: the card goes if it is still there, the group takes its name."""
+    edits = _Step(pc, step)
+    try:
+        artist_doc = int(pc.cmd("session.inspect")["active"])
+        doc = _activate(pc, placeholder)
+        if _has_layer(doc["layers"], placeholder.layer):
+            edits.edit("layer.delete", {"layer": placeholder.layer})
+        edits.edit("layer.setProps", {"layer": placeholder.group, "name": group_name})
+        pc.cmd("document.activate", {"document": artist_doc})
+    except (ControlError, PlacementError):
+        logger.info("group of %s already gone", placeholder)
 
 
 class Watch:
@@ -143,27 +231,27 @@ class Watch:
         return any(
             _has_layer(
                 self._pc.cmd("document.inspect", {"document": d["index"]})["layers"],
-                self._placeholder.layer,
+                self._placeholder.watched,
             )
             for d in named
         )
 
 
-def discard(pc: Control, placeholder: Placeholder) -> None:
-    """Delete the placeholder if it is still there (a failed or cancelled run)."""
+def discard(pc: Control, placeholder: Placeholder, step: str) -> None:
+    """Delete the placeholder (a run of variations: its group) after a failure or a cancel."""
     try:
         artist_doc = int(pc.cmd("session.inspect")["active"])
         _activate(pc, placeholder)
-        pc.cmd("layer.delete", {"layer": placeholder.layer})
+        _Step(pc, step).edit("layer.delete", {"layer": placeholder.watched})
         pc.cmd("document.activate", {"document": artist_doc})
     except (ControlError, PlacementError):
         logger.info("placeholder %s already gone", placeholder)
 
 
-def _copy_file(pc: Control, name: str) -> None:
+def _copy_file(pc: Control, path: str) -> None:
     # ponytail: copy/paste because placing a file is refused under automation (file.* paths);
     # it overwrites the clipboard. Swap for a capability-scoped place once PhotoCraft has one.
-    pc.call("app.open", {"path": name})
+    pc.call("app.open", {"path": path})
     pc.cmd("select.all")
     pc.cmd("edit.copy")
     pc.cmd("file.close")
@@ -183,34 +271,50 @@ def _activate(pc: Control, placeholder: Placeholder) -> dict[str, Any]:
     for index in named:
         pc.cmd("document.activate", {"document": index})
         doc: dict[str, Any] = pc.cmd("document.inspect")
-        if _has_layer(doc["layers"], placeholder.layer):
+        if _has_layer(doc["layers"], placeholder.watched):
             return doc
     pc.cmd("document.activate", {"document": session["active"]})
     raise PlacementError("placeholder deleted: result not placed")
 
 
 def _has_layer(layers: list[dict[str, Any]], layer_id: int) -> bool:
-    # A group lists its layers under "children": the artist may move the card into one.
-    return any(
-        layer["id"] == layer_id or _has_layer(layer.get("children", []), layer_id)
-        for layer in layers
-    )
+    return bool(_find(layers, layer_id))
+
+
+def _find(layers: list[dict[str, Any]], layer_id: int) -> dict[str, Any]:
+    """The layer ``layer_id`` anywhere in the tree (groups list theirs under "children"); {}."""
+    for layer in layers:
+        if layer["id"] == layer_id:
+            return layer
+        found = _find(layer.get("children", []), layer_id)
+        if found:
+            return found
+    return {}
 
 
 def _restore(
-    pc: Control, before: dict[str, Any], placeholder: Placeholder, artist_doc: int
+    pc: Control,
+    edits: _Step,
+    before: dict[str, Any],
+    placeholder: Placeholder,
+    artist_doc: int,
+    result: int,
 ) -> None:
     """Give the artist back the selection, layer and document they had before the paste."""
     if before["hasSelection"]:
-        pc.cmd("select.loadSelection", {"channel": ARTIST_CHANNEL})
-        pc.cmd("channel.delete", {"channel": ARTIST_CHANNEL})
+        edits.edit("select.loadSelection", {"channel": ARTIST_CHANNEL})
+        edits.edit("channel.delete", {"channel": ARTIST_CHANNEL})
     else:
-        pc.cmd("select.deselect")
-    # Like Photoshop the result stays selected, so the next one stacks above it; unless the
-    # artist worked in this document meanwhile: they keep the layer they were on.
+        edits.edit("select.deselect")
+    # Like Photoshop the result stays selected (a group of variations shows its picker), so the
+    # next one stacks above it; unless the artist worked in this document meanwhile, or moved to
+    # another layer: they keep the layer they were on.
     worked = before["revision"] != placeholder.revision
-    if worked and before.get("activeLayer") not in (None, placeholder.layer):
-        pc.cmd("layer.select", {"layer": before["activeLayer"]})
+    kept = before.get("activeLayer")
+    if worked and kept not in (None, placeholder.layer):
+        pc.cmd("layer.select", {"layer": kept})
+    else:
+        pc.cmd("layer.select", {"layer": result})
     pc.cmd("document.activate", {"document": artist_doc})
 
 

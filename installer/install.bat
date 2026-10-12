@@ -22,10 +22,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 set "PATH=%PATH%;%HERE%"
 
 mkdir "%HERE%\data\work" 2>nul
-rem The shipped workflows; a file already there (maybe edited) is kept.
+rem The shipped workflows, a folder each (in a category folder); a file already there (maybe edited)
+rem is kept. A 0.1 loose copy first moves into its folder, edits and all.
 mkdir "%HERE%\data\workflows" 2>nul
-for %%f in ("%HERE%\workflows\*.json") do if not exist "%HERE%\data\workflows\%%~nxf" copy "%%f" "%HERE%\data\workflows\" >nul
-echo  Workflows:  data\workflows\ ^(drop a graph exported from ComfyUI there^)
+for /r "%HERE%\workflows" %%f in (workflow.json) do if exist "%%f" call :move_old_copy "%%f"
+robocopy "%HERE%\workflows" "%HERE%\data\workflows" /E /XC /XN /XO /NFL /NDL /NJH /NJS /NP >nul
+echo  Workflows:  data\workflows\ ^(XP menu ^> Import Workflow adds a graph exported from ComfyUI^)
 if not exist "%HERE%\data\.env" (
     copy "%HERE%\.env.example" "%HERE%\data\.env" >nul
     echo  Settings:   data\.env ^(your comfy.org API key goes there, for Nano Banana^)
@@ -47,3 +49,16 @@ echo  select an area, and use the task bar under the selection. Guide: INSTALL.m
 :end
 echo.
 pause
+goto :eof
+
+:move_old_copy
+rem %1: a shipped workflow.json. Its 0.1 copy, data\workflows\<its folder's name>.json, becomes the
+rem workflow.json of the same folder under data\workflows, unless that folder has one already.
+set "SHIPPED=%~dp1"
+for %%d in ("%~dp1.") do set "OLD=%HERE%\data\workflows\%%~nxd.json"
+call set "FOLDER=%%SHIPPED:%HERE%\workflows\=%HERE%\data\workflows\%%"
+if exist "%OLD%" if not exist "%FOLDER%workflow.json" (
+    mkdir "%FOLDER%" 2>nul
+    move "%OLD%" "%FOLDER%workflow.json" >nul
+)
+goto :eof

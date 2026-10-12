@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -16,6 +18,11 @@ from xp_photocraft.config import (
     COMFY_POLL_S,
     COMFY_TIMEOUT_S,
 )
+
+logger = logging.getLogger(__name__)
+
+# Inputs naming a model file; their values are checked against the server's own lists.
+_MODEL_SUFFIXES = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf", ".sft")
 
 
 class ComfyError(RuntimeError):
@@ -72,11 +79,36 @@ class Comfy:
             if match:
                 node["inputs"][name_input] = match
 
+    def missing(self, graph: dict[str, Any]) -> list[str]:
+        """What ``graph`` needs that this server lacks: node types, then model files, one line each.
+
+        A built-in model's other variant counts as found, as when it runs (``resolve_models``).
+        """
+        graph = copy.deepcopy(graph)
+        self.resolve_models(graph)
+        found: list[str] = []
+        for node in graph.values():
+            class_type = str(node.get("class_type"))
+            spec = self._spec(class_type)
+            if spec is None:
+                found.append(f"{class_type}: this node type is not on the ComfyUI server")
+                continue
+            for name, value in node.get("inputs", {}).items():
+                if not (isinstance(value, str) and value.lower().endswith(_MODEL_SUFFIXES)):
+                    continue
+                names = _choices(spec, name)
+                if names is not None and _basename(value) not in {_basename(n) for n in names}:
+                    found.append(f"{class_type}: {_basename(value)} is not on the ComfyUI server")
+        return found
+
+    def _spec(self, node: str) -> dict[str, Any] | None:
+        """``node``'s input spec from /object_info; None for a node type the server lacks."""
+        info: dict[str, Any] = self._http.get(f"/object_info/{node}").json()
+        return info[node].get("input", {}) if node in info else None
+
     def _server_file(self, node: str, name_input: str, files: tuple[str, ...]) -> str:
         """The server's name for the first of ``files`` it has (in any subfolder), else ""."""
-        info = self._http.get(f"/object_info/{node}").json()
-        names: list[str] = info[node]["input"]["required"][name_input][0]
-        by_file = {_basename(n): n for n in names}
+        by_file = {_basename(n): n for n in _choices(self._spec(node) or {}, name_input) or []}
         return next((by_file[f] for f in files if f in by_file), "")
 
     def upload(self, file: Path) -> str:
@@ -95,47 +127,109 @@ class Comfy:
         """Queue an API-format graph, wait for it, and return ``output_node``'s image.
 
         Without ``output_node``: the first saved image (a preview is a fallback, not a result).
-        ``still_wanted`` is asked at every poll; once it says no, the job is withdrawn and
-        Cancelled raised.
         """
+        images: list[bytes] = []
+        self.run_all([graph], output_node, lambda _k, png: images.append(png), still_wanted)
+        return images[0]
+
+    def run_all(
+        self,
+        graphs: list[dict[str, Any]],
+        output_node: str,
+        on_image: Callable[[int, bytes], None],
+        still_wanted: Callable[[], bool] = lambda: True,
+    ) -> None:
+        """Queue every graph at once, then hand each image to ``on_image(k, png)`` as it comes.
+
+        ``still_wanted`` is asked at every poll. Once it says no (Cancelled), or anything fails,
+        ``on_image`` included, the graphs not done are withdrawn: nothing keeps running on the
+        server for a result nobody will take.
+        """
+        pending: dict[str, int] = {}
+        try:
+            for k, graph in enumerate(graphs):
+                pending[self._queue(graph)] = k
+            self._collect(pending, output_node, on_image, still_wanted)
+        except BaseException:
+            if pending:
+                self._withdraw(list(pending))
+            raise
+
+    def _queue(self, graph: dict[str, Any]) -> str:
         body = {"prompt": graph, "client_id": uuid.uuid4().hex, **self._extra}
         queued = self._http.post("/prompt", json=body)
         if queued.status_code != 200:
             raise ComfyError(f"graph refused: {_refusal(queued)}")
-        history = self._wait(str(queued.json()["prompt_id"]), still_wanted)
-        image = _pick_image(history["outputs"], output_node)
-        view = self._http.get("/view", params=image)
+        return str(queued.json()["prompt_id"])
+
+    def _collect(
+        self,
+        pending: dict[str, int],
+        output_node: str,
+        on_image: Callable[[int, bytes], None],
+        still_wanted: Callable[[], bool],
+    ) -> None:
+        """Poll until every pending prompt is done; ``pending`` shrinks as images come."""
+        started: dict[str, float] = {}
+        while pending:
+            for prompt_id in list(pending):
+                entry: dict[str, Any] | None = (
+                    self._http.get(f"/history/{prompt_id}").json().get(prompt_id)
+                )
+                if entry and entry.get("status", {}).get("status_str") == "error":
+                    raise ComfyError(f"ComfyUI failed: {_execution_error(entry['status'])}")
+                if entry and entry.get("outputs"):
+                    image = self._image(entry["outputs"], output_node)
+                    on_image(pending.pop(prompt_id), image)
+            if not pending:
+                return
+            if not still_wanted():
+                raise Cancelled(f"{len(pending)} prompt(s) withdrawn")
+            self._check_deadline(pending, started)
+            time.sleep(COMFY_POLL_S)
+
+    def _check_deadline(self, pending: dict[str, int], started: dict[str, float]) -> None:
+        # The clock starts when a prompt runs, not when it is queued: a run behind another one
+        # (or behind someone else's) waits its turn without timing out.
+        now = time.monotonic()
+        for job in self._http.get("/queue").json().get("queue_running", []):
+            if job[1] in pending:
+                started.setdefault(job[1], now)
+        late = [p for p in pending if now - started.get(p, now) > COMFY_JOB_TIMEOUT_S]
+        if late:
+            raise ComfyError(f"no result after {COMFY_JOB_TIMEOUT_S:.0f} s (prompt {late[0]})")
+
+    def _image(self, outputs: dict[str, Any], output_node: str) -> bytes:
+        view = self._http.get("/view", params=_pick_image(outputs, output_node))
         view.raise_for_status()
         return view.content
 
-    def _wait(self, prompt_id: str, still_wanted: Callable[[], bool]) -> dict[str, Any]:
-        deadline = time.monotonic() + COMFY_JOB_TIMEOUT_S
-        while time.monotonic() < deadline:
-            entry: dict[str, Any] | None = (
-                self._http.get(f"/history/{prompt_id}").json().get(prompt_id)
-            )
-            if entry and entry.get("status", {}).get("status_str") == "error":
-                raise ComfyError(f"ComfyUI failed: {_execution_error(entry['status'])}")
-            if entry and entry.get("outputs"):
-                return entry
-            if not still_wanted():
-                self._withdraw(prompt_id)
-                raise Cancelled(f"prompt {prompt_id} withdrawn")
-            time.sleep(COMFY_POLL_S)
-        raise ComfyError(f"no result after {COMFY_JOB_TIMEOUT_S:.0f} s (prompt {prompt_id})")
-
-    def _withdraw(self, prompt_id: str) -> None:
-        """Take the job off the queue, or stop it if it runs; other jobs are someone else's."""
-        self._http.post("/queue", json={"delete": [prompt_id]})
-        running = self._http.get("/queue").json().get("queue_running", [])
-        if any(len(job) > 1 and job[1] == prompt_id for job in running):
-            # A server older than targeted interrupts stops whatever runs: this very job.
-            self._http.post("/interrupt", json={"prompt_id": prompt_id})
+    def _withdraw(self, prompt_ids: list[str]) -> None:
+        """Take the jobs off the queue, or stop those that run; other jobs are someone else's."""
+        try:
+            self._http.post("/queue", json={"delete": prompt_ids})
+            for job in self._http.get("/queue").json().get("queue_running", []):
+                if job[1] in prompt_ids:
+                    # A server older than targeted interrupts stops whatever runs: this very job.
+                    self._http.post("/interrupt", json={"prompt_id": job[1]})
+        except httpx.HTTPError as e:  # the failure being raised matters more than this one
+            logger.warning("could not withdraw %d prompt(s) from ComfyUI: %s", len(prompt_ids), e)
 
 
 def _basename(name: str) -> str:
     # Windows servers list subfolders with backslashes.
     return name.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _choices(spec: dict[str, Any], name_input: str) -> list[str] | None:
+    """The values an input offers (a file list, an enum); None for a free value."""
+    entry = {**spec.get("optional", {}), **spec.get("required", {})}.get(name_input)
+    if not entry:
+        return None
+    first = entry[0]
+    if first == "COMBO" and len(entry) > 1 and isinstance(entry[1], dict):  # ComfyUI 0.39 nodes
+        first = entry[1].get("options")
+    return [str(choice) for choice in first] if isinstance(first, list) else None
 
 
 def _refusal(response: httpx.Response) -> str:

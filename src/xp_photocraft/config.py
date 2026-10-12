@@ -34,6 +34,14 @@ WORKFLOWS_FILE = "workflows.json"
 # Beside it: every API graph dropped in this folder is a workflow, named after its file.
 WORKFLOWS_DIR = "workflows"
 TOKEN_FILENAME = "control.token"
+# Each run has its own folder in the work dir (region, mask, card, results), so runs started side
+# by side never share a file; the newest ones are kept, for a re-run.
+RUNS_DIR = "runs"
+KEEP_RUNS = 10
+# Held while a run edits PhotoCraft (export, card, placement): another run waits its turn, since
+# each sequence assumes the active document stays put. Released by the OS if a run dies.
+LOCK_FILE = "photocraft.lock"
+LOCK_TIMEOUT_S = 120.0
 
 # --- the round trip -----------------------------------------------------------
 
@@ -106,8 +114,17 @@ REMOVE_PROMPT = (
 
 # --- workflows -------------------------------------------------------------------
 
+# Variations of one run: each is a seed of its own, in one group the artist picks from.
+MAX_VARIATIONS = 8
+
 # The actions a workflow can be assigned to, and the workflow each runs until assigned.
 ACTIONS = ("fill", "remove")
+# A workflow is a folder holding these (the export runs; the app names the settings it shows),
+# directly in the workflows folder or in one category folder there.
+WORKFLOW_FILE = "workflow.json"
+APP_FILE = "app.json"
+# workflows.json keeps the last ones used, most recent first.
+RECENT_MAX = 5
 BUILTIN_WORKFLOW = "qwen-edit"
 BUILTIN_LABEL = "Qwen Edit 2511 (ComfyUI)"
 

@@ -23,10 +23,20 @@ case ":$PATH:" in
   *) echo " PATH:       add $bin to your PATH (most distributions do it at next login)" ;;
 esac
 
-# The shipped workflows; a file already there (maybe edited) is kept.
+# The shipped workflows, a folder each (in a category folder); a file already there (maybe edited)
+# is kept. A 0.1 loose copy first moves into its folder, edits and all.
 mkdir -p "$here/data/workflows"
-for f in "$here"/workflows/*.json; do [ -e "$here/data/workflows/${f##*/}" ] || cp "$f" "$here/data/workflows/"; done
-echo " Workflows:  data/workflows/ (drop a graph exported from ComfyUI there)"
+for f in "$here"/workflows/*/*/workflow.json "$here"/workflows/*/workflow.json; do
+  [ -f "$f" ] || continue
+  rel="${f#"$here/workflows/"}"
+  folder="$here/data/workflows/$(dirname "$rel")"
+  old="$here/data/workflows/$(basename "$(dirname "$f")").json"
+  if [ -f "$old" ] && [ ! -e "$folder/workflow.json" ]; then mkdir -p "$folder"; mv "$old" "$folder/workflow.json"; fi
+done
+(cd "$here/workflows" && find . -type f) | while IFS= read -r f; do
+  [ -e "$here/data/workflows/$f" ] || { mkdir -p "$(dirname "$here/data/workflows/$f")"; cp "$here/workflows/$f" "$here/data/workflows/$f"; }
+done
+echo " Workflows:  data/workflows/ (XP menu > Import Workflow adds a graph exported from ComfyUI)"
 if [ ! -f "$here/data/.env" ]; then
   cp "$here/.env.example" "$here/data/.env"
   echo " Settings:   data/.env (your comfy.org API key goes there, for Nano Banana)"

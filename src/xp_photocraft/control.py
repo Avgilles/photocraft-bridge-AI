@@ -7,11 +7,25 @@ from __future__ import annotations
 
 import json
 import socket
+import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
-from xp_photocraft.config import CONTROL_HOST, CONTROL_IDLE_RECONNECT_S, CONTROL_TIMEOUT_S
+from xp_photocraft.config import (
+    CONTROL_HOST,
+    CONTROL_IDLE_RECONNECT_S,
+    CONTROL_TIMEOUT_S,
+    LOCK_FILE,
+    LOCK_TIMEOUT_S,
+)
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 
 class ControlError(RuntimeError):
@@ -85,3 +99,44 @@ class Control:
             # Lines with another id are stale replies to requests that timed out.
             if reply.get("id") == request_id:
                 return reply
+
+
+@contextmanager
+def exclusive(work: Path) -> Iterator[None]:
+    """Hold PhotoCraft for one sequence of edits: no other run of the bridge interleaves its own.
+
+    A run exports, pastes and restores through several requests that assume the active document
+    stays put; two runs at once would switch it under each other. The OS drops the lock with the
+    process, so a run that died never blocks the next one.
+    """
+    work.mkdir(parents=True, exist_ok=True)
+    with (work / LOCK_FILE).open("a+b") as handle:
+        _lock(handle)
+        try:
+            yield
+        finally:
+            _unlock(handle)
+
+
+def _lock(handle: IO[bytes]) -> None:
+    if sys.platform != "win32":
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        return
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    handle.seek(0)
+    while True:
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            return
+        except OSError:
+            if time.monotonic() > deadline:
+                raise ControlError("another xp-photocraft run keeps PhotoCraft busy") from None
+            time.sleep(0.05)
+
+
+def _unlock(handle: IO[bytes]) -> None:
+    if sys.platform != "win32":
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        return
+    handle.seek(0)
+    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
