@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 from PIL import Image
 
-from xp_photocraft import cli, registry, roundtrip
+from xp_photocraft import catalog, cli, local, registry, roundtrip
 from xp_photocraft.engines import ComfyGraph, Engine, EngineError, Runner, generation_megapixels
 
 # A runner@1 command: writes a 4x4 PNG beside the request, or fails like a real one would.
@@ -363,25 +363,27 @@ def test_data_dir_is_beside_a_portable_executable(
     exe.write_bytes(b"")
     monkeypatch.setattr(sys, "executable", str(exe))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
-    assert cli._data_dir() == tmp_path / "appdata" / "xp-photocraft"  # no marker: the user's folder
+    assert (
+        local.data_dir() == tmp_path / "appdata" / "xp-photocraft"
+    )  # no marker: the user's folder
     (exe.parent / "portable.txt").write_text("")
-    assert cli._data_dir() == exe.parent / "data"
+    assert local.data_dir() == exe.parent / "data"
 
 
 def test_api_key_comes_from_the_environment_or_the_dotenv_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.delenv(cli.API_KEY_ENV, raising=False)
-    assert cli._api_key() == ""
+    monkeypatch.delenv(local.API_KEY_ENV, raising=False)
+    assert local.api_key() == ""
     data = tmp_path / "xp-photocraft"
     data.mkdir()
     (data / ".env").write_text(
         "# comfy.org\nXP_PHOTOCRAFT_COMFY_API_KEY = 'file-key'\nOTHER=1\n", encoding="utf-8"
     )
-    assert cli._api_key() == "file-key"
-    monkeypatch.setenv(cli.API_KEY_ENV, "env-key")
-    assert cli._api_key() == "env-key"  # the environment wins
+    assert local.api_key() == "file-key"
+    monkeypatch.setenv(local.API_KEY_ENV, "env-key")
+    assert local.api_key() == "env-key"  # the environment wins
 
 
 def _catalog_tree(data: Path) -> Path:
@@ -476,7 +478,7 @@ def test_import_copies_an_export_and_its_app_into_a_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setattr(cli, "Comfy", _ServerLacking)
+    monkeypatch.setattr(catalog, "Comfy", _ServerLacking)
     source = _export(tmp_path / "downloads", "Flux Fill", _GRAPH, app=True)
 
     result = CliRunner().invoke(cli.cli, ["import", str(source), "--category", "Local"])
@@ -511,7 +513,7 @@ def test_a_name_in_the_catalog_is_replaced_only_once_agreed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setattr(cli, "Comfy", _ServerLacking)
+    monkeypatch.setattr(catalog, "Comfy", _ServerLacking)
     source = _export(tmp_path / "downloads", "Flux Fill", _GRAPH)
     root = tmp_path / "xp-photocraft" / "workflows"
 
@@ -529,7 +531,7 @@ def test_a_name_in_the_catalog_is_replaced_only_once_agreed(
 
 def test_a_workflow_folder_imports_whole(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setattr(cli, "Comfy", _ServerLacking)
+    monkeypatch.setattr(catalog, "Comfy", _ServerLacking)
     shared = tmp_path / "from a friend" / "Kontext Fill"
     shared.mkdir(parents=True)
     (shared / "workflow.json").write_text(json.dumps(_GRAPH), encoding="utf-8")
@@ -601,7 +603,7 @@ def test_params_lists_what_the_app_shows_with_the_last_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setattr(cli, "Comfy", _SpecComfy)
+    monkeypatch.setattr(catalog, "Comfy", _SpecComfy)
     data = tmp_path / "xp-photocraft"
     _settings_catalog(data)
     registry.remember_settings(data / "workflows.json", "Tuned", {"4.steps": "12"}, {})
@@ -628,7 +630,7 @@ def test_params_without_the_server_still_lists_the_settings(
         def spec(self, class_type: str) -> dict[str, Any] | None:
             raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(cli, "Comfy", Down)
+    monkeypatch.setattr(catalog, "Comfy", Down)
     _settings_catalog(tmp_path / "xp-photocraft")
 
     reply = json.loads(CliRunner().invoke(cli.cli, ["params", "Tuned"]).stdout)
