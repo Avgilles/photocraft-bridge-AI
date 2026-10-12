@@ -47,7 +47,12 @@ class FakeControl:
         doc = self.doc
         if command == "session.inspect":
             names = [
-                {"index": i, "name": d["name"], "path": d.get("path")}
+                {
+                    "index": i,
+                    "name": d["name"],
+                    "path": d.get("path"),
+                    "revision": d.get("revision", 0),
+                }
                 for i, d in enumerate(self.docs)
             ]
             return {"active": self.active, "documents": names}
@@ -236,12 +241,43 @@ def test_a_placeholder_moved_into_a_group_is_still_there() -> None:
     class GroupedControl:
         def cmd(self, command: str, params: dict[str, Any] | None = None) -> Any:
             if command == "session.inspect":
-                return {"documents": [{"index": 0, "name": "poster.png"}]}
+                return {"documents": [{"index": 0, "name": "poster.png", "revision": 4}]}
             return {"layers": [{"id": 9, "children": [{"id": 12}]}, {"id": 2}]}
 
     pc = GroupedControl()
-    assert placeholder.exists(pc, Placeholder("poster.png", 12, 0))  # type: ignore[arg-type]
-    assert not placeholder.exists(pc, Placeholder("poster.png", 13, 0))  # type: ignore[arg-type]
+    assert placeholder.Watch(pc, Placeholder("poster.png", 12, 0))()  # type: ignore[arg-type]
+    assert not placeholder.Watch(pc, Placeholder("poster.png", 13, 0))()  # type: ignore[arg-type]
+
+
+def _inspections(pc: FakeControl) -> int:
+    return sum(1 for c, p in pc.log if c == "document.inspect" and "document" in p)
+
+
+def test_the_watch_reads_the_layers_only_after_the_document_changed(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)  # layers cost PhotoCraft every bounds; the revision is free
+    watch = placeholder.Watch(pc, Placeholder("poster.png", 2, 0), every=0.0)  # type: ignore[arg-type]
+
+    assert watch() and _inspections(pc) == 1  # first look
+    assert watch() and _inspections(pc) == 1  # nothing changed: no layer read
+    pc.cmd("edit.fill", {"contents": "white"})
+    assert watch() and _inspections(pc) == 2  # changed: read again
+    pc.cmd("layer.delete", {"layer": 2})
+    assert not watch()
+
+
+def test_the_watch_reads_the_layers_at_most_every_few_seconds(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    watch = placeholder.Watch(pc, Placeholder("poster.png", 2, 0), every=60.0)  # type: ignore[arg-type]
+
+    assert watch()
+    pc.cmd("layer.delete", {"layer": 2})
+    assert watch() and _inspections(pc) == 1  # seen at the next slot, not now
+
+
+def test_closing_the_document_cancels_too(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    watch = placeholder.Watch(pc, Placeholder("sketch.png", 2, 0))  # type: ignore[arg-type]
+    assert not watch()  # no document of that name: the result has nowhere to go
 
 
 def test_two_documents_of_one_name_each_keep_their_own(tmp_path: Path) -> None:

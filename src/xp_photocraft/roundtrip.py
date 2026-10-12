@@ -101,7 +101,7 @@ def _repaint(
             prompt,
             seed,
             mode,
-            still_wanted=lambda: placeholder.exists(pc, holder),
+            still_wanted=placeholder.Watch(pc, holder),
         )
         write_placed(Image.open(io.BytesIO(png)), crop, doc_size, work / PLACED_FILE)
         placeholder.place(pc, holder, layer_name)

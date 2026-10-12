@@ -50,8 +50,8 @@ DOTENV_FILE = ".env"
 class FillResult(BaseModel):
     """``fill@1``: what was placed, where, from which seed.
 
-    ``cancelled``: the artist deleted the placeholder, so nothing was placed (``ok`` false); not a
-    failure, the exit status is 0.
+    ``cancelled``: the artist deleted the placeholder (or closed its document), so nothing was
+    placed (``ok`` false); not a failure, the exit status is 0.
     """
 
     contract: str = "fill@1"
@@ -229,7 +229,7 @@ def _run(
         engine = _engine(reg, workflow, server, root)
         rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root, workflow)
     except Cancelled:
-        error = "cancelled (placeholder deleted), generation stopped"
+        error = "cancelled (placeholder gone), generation stopped"
         click.echo(f"xp-photocraft {mode}: {error}", err=True)
         _emit(
             FillResult(

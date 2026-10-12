@@ -128,8 +128,8 @@ Select an area (rectangle, lasso…). A bar appears under it:
   selection.
 - **Remove**: PhotoCraft's classic fill, no AI.
 
-To cancel a generation, delete its card's layer (*… (generating… delete to cancel)*): within half a
-second the generation stops on ComfyUI and nothing is placed. Undoing the deletion brings back the
+To cancel a generation, delete its card's layer (*… (generating… delete to cancel)*): within two
+seconds the generation stops on ComfyUI and nothing is placed. Undoing the deletion brings back the
 card alone; delete it again.
 
 Each result is also kept **next to the document's file**, in `xp-work\<document name>\` (the model's

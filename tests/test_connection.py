@@ -126,7 +126,7 @@ def test_a_cancelled_fill_exits_0_and_says_so(
     # Exit 0: PhotoCraft's task bar shows the last line as news, not "Generative fill failed".
     assert result.exit_code == 0
     assert result.stderr.strip().splitlines()[-1] == (
-        "xp-photocraft fill: cancelled (placeholder deleted), generation stopped"
+        "xp-photocraft fill: cancelled (placeholder gone), generation stopped"
     )
     reply = json.loads(result.stdout)
     assert (reply["ok"], reply["cancelled"]) == (False, True)

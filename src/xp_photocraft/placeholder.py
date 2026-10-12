@@ -7,21 +7,22 @@ layer), pastes the result just
 above the placeholder, masks it with the placeholder's mask (the selection), deletes the
 placeholder and restores whatever document, layer and selection the artist has by then.
 
-Deleting the placeholder meanwhile cancels the run for good: ``exists`` is asked at every poll of
-the generation, which is then stopped. Undoing the deletion brings the card back alone.
+Deleting the placeholder meanwhile cancels the run for good: a ``Watch`` is asked at every poll
+of the generation, which is then stopped. Undoing the deletion brings the card back alone.
 """
 
 from __future__ import annotations
 
 import logging
 import textwrap
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from xp_photocraft.config import PLACED_FILE
+from xp_photocraft.config import LAYER_CHECK_S, PLACED_FILE
 from xp_photocraft.control import Control, ControlError
 
 logger = logging.getLogger(__name__)
@@ -117,14 +118,35 @@ def place(pc: Control, placeholder: Placeholder, layer_name: str) -> None:
     _restore(pc, doc, placeholder, artist_doc)
 
 
-def exists(pc: Control, placeholder: Placeholder) -> bool:
-    """Whether the placeholder is still in its document; only reads, the active one stays."""
-    session = pc.cmd("session.inspect")
-    named = [d["index"] for d in session["documents"] if d["name"] == placeholder.document]
-    return any(
-        _has_layer(pc.cmd("document.inspect", {"document": i})["layers"], placeholder.layer)
-        for i in named
-    )
+class Watch:
+    """Answers whether the placeholder is still there, cheaply enough to be asked twice a second.
+
+    Only reads, and the active document stays. ``session.inspect`` costs PhotoCraft nothing and
+    gives each document's revision, which any edit (a deleted layer included) moves; the layers
+    themselves are read only after it moved, at most every ``every`` seconds.
+    """
+
+    def __init__(self, pc: Control, placeholder: Placeholder, every: float = LAYER_CHECK_S) -> None:
+        self._pc, self._placeholder, self._every = pc, placeholder, every
+        self._seen: tuple[int, ...] = ()
+        self._next = 0.0
+
+    def __call__(self) -> bool:
+        session = self._pc.cmd("session.inspect")
+        named = [d for d in session["documents"] if d["name"] == self._placeholder.document]
+        if not named:
+            return False  # its document was closed: the result has nowhere to go
+        revisions = tuple(int(d["revision"]) for d in named)
+        if revisions == self._seen or time.monotonic() < self._next:
+            return True
+        self._seen, self._next = revisions, time.monotonic() + self._every
+        return any(
+            _has_layer(
+                self._pc.cmd("document.inspect", {"document": d["index"]})["layers"],
+                self._placeholder.layer,
+            )
+            for d in named
+        )
 
 
 def discard(pc: Control, placeholder: Placeholder) -> None:

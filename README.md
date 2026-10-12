@@ -74,12 +74,14 @@ xp-photocraft ── control protocol (loopback) ──► export region + margi
   frame naming the action and the prompt. The bridge then leaves PhotoCraft alone until the result
   is ready, and puts it where the placeholder is (same document, just above it, same mask), handing
   back whatever document, layer and selection you have by then.
-- **Delete the placeholder to cancel.** While it waits, the bridge checks every half second that
-  the placeholder is still there, reading the document without switching to it. Once it is gone,
-  the job leaves ComfyUI's queue, or is stopped if it already runs (only that job), and nothing is
-  placed. A cancel is final: undoing the deletion brings back the card alone, with no generation
-  behind it; delete it again. A deletion undone within that half second goes unnoticed, and the run
-  goes on. Two limits: a Nano Banana image already requested from comfy.org is billed anyway, and
+- **Delete the placeholder to cancel.** While it waits, the bridge looks every half second whether
+  the placeholder's document changed, which costs PhotoCraft nothing, and only then whether the
+  placeholder is still there, at most every two seconds (reading a document's layers makes
+  PhotoCraft measure them all); it never switches documents. Once the placeholder is gone, or its
+  document closed, the job leaves ComfyUI's queue, or is stopped if it already runs (only that
+  job), and nothing is placed. A cancel is final: undoing the deletion brings back the card alone,
+  with no generation behind it; delete it again. A deletion undone before the bridge looks goes
+  unnoticed, and the run goes on. Two limits: a Nano Banana image already requested from comfy.org is billed anyway, and
   a workflow run by a command goes to its end, its result placed only if the card is back by then.
 - `remove` first shows the model PhotoCraft's classical Content-Aware Fill of the selection: given
   the object itself, an edit model tends to redraw it.

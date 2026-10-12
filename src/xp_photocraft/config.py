@@ -68,6 +68,9 @@ COMFY_TIMEOUT_S = 60.0
 # Testing a connection answers fast or not at all: a wrong address must not hang the UI.
 CONNECT_TIMEOUT_S = 5.0
 COMFY_POLL_S = 0.5
+# Looking for the placeholder's layer costs PhotoCraft every layer's bounds (~0.1 s for 150
+# layers at 6000x4000, measured 2026-10-12): only after the document changed, this often at most.
+LAYER_CHECK_S = 2.0
 # An inpaint took ~70 s with cold models, ~20 s warm, on one consumer GPU. Ten minutes
 # covers a cold load behind a queue.
 COMFY_JOB_TIMEOUT_S = 600.0
