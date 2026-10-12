@@ -556,8 +556,11 @@ def test_each_result_is_kept_in_xp_work_next_to_the_document(tmp_path: Path) -> 
         pc, FakeEngine(), "a plate", [7, 8], tmp_path, "Generative Fill", "qwen-edit"
     )  # type: ignore[arg-type]
 
-    kept = sorted(k.name.split("_", 1)[1] for k in (project / "xp-work" / "daylight_suv").iterdir())
+    folder = project / "xp-work" / "daylight_suv"
+    kept = sorted(k.name.split("_", 1)[1] for k in folder.iterdir() if k.is_file())
     assert kept == ["fill_7.json", "fill_7.png", "fill_8.json", "fill_8.png"]
+    run = folder / "runs" / outcome.run  # what a re-run needs, even once the work dir moved on
+    assert sorted(p.name for p in run.iterdir()) == ["mask.png", "region.png", "run.json"]
     sidecar = next((project / "xp-work" / "daylight_suv").glob("*_fill_7.json"))
     record = json.loads(sidecar.read_text(encoding="utf-8"))
     assert (record["prompt"], record["workflow"]) == ("a plate", "qwen-edit")
@@ -570,3 +573,82 @@ def test_a_never_saved_document_keeps_nothing_beside_it(tmp_path: Path) -> None:
         roundtrip.project_work_dir("in/opened.png", tmp_path)
         == tmp_path / "in" / "xp-work" / "opened"
     )
+
+
+def _saved_run(tmp_path: Path) -> tuple[FakeControl, roundtrip.Outcome, Path]:
+    """Two variations of a saved document, with the settings each ran with."""
+    project = tmp_path / "projects"
+    project.mkdir()
+    pc = FakeControl(tmp_path)
+    pc.docs[0]["path"] = str(project / "poster.psd")
+    settings = [{"3.steps": 4}, {"3.steps": 8}]
+    outcome = roundtrip.fill_selection(
+        pc, FakeEngine(), "a plate", [7, 8], tmp_path, "Generative Fill", "qwen-edit", settings
+    )  # type: ignore[arg-type]
+    return pc, outcome, project
+
+
+def test_a_variation_runs_again_into_its_group_shown_alone(tmp_path: Path) -> None:
+    pc, outcome, project = _saved_run(tmp_path)
+    engine = FakeEngine()
+
+    earlier = roundtrip.find_run(pc, tmp_path, outcome.run, outcome.group)  # type: ignore[arg-type]
+    again = roundtrip.rerun_variation(
+        pc,  # type: ignore[arg-type]
+        engine,
+        tmp_path,
+        earlier,
+        8,
+        "a red plate",
+        earlier.settings(8) | {"3.cfg": 2.0},
+    )
+
+    group = _get(_poster(pc)["layers"], outcome.group)
+    assert group["name"] == "Generative Fill ×2 — a plate"  # left as it was
+    children = group["children"]
+    assert (children[0]["name"], children[0]["visible"]) == (
+        f"Variation 3 · seed 8 · {outcome.run}",
+        True,
+    )
+    assert not any(child["visible"] for child in children[1:])  # one shown at a time
+    assert engine.request[2:4] == ("a red plate", [8])
+    assert (again.run, again.group, [v.seed for v in again.variations]) == (
+        outcome.run,
+        outcome.group,
+        [8],
+    )
+    kept = [
+        json.loads(k.read_text("utf-8")) for k in (project / "xp-work/poster").glob("*_8*.json")
+    ]
+    assert sorted(r["variation"] for r in kept) == [2, 3]  # the first one is still there
+    record = next(r for r in kept if r["variation"] == 3)
+    assert record["prompt"] == "a red plate"
+    assert record["settings"] == {"3.steps": 8, "3.cfg": 2.0}
+
+
+def test_a_run_of_a_document_never_saved_is_found_in_the_work_dir(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    outcome = _fill(pc, FakeEngine(), [1, 2], tmp_path)
+
+    earlier = roundtrip.find_run(pc, tmp_path, outcome.run, outcome.group)  # type: ignore[arg-type]
+
+    assert earlier.folder == tmp_path / "runs" / outcome.run
+    assert (earlier.meta["seeds"], earlier.last_number) == ([1, 2], 2)
+
+
+def test_a_run_no_longer_kept_is_said_so(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    outcome = _fill(pc, FakeEngine(), [1, 2], tmp_path)
+    (tmp_path / "runs" / outcome.run / "run.json").unlink()  # pruned meanwhile
+
+    with pytest.raises(roundtrip.RunGoneError, match="not kept any more"):
+        roundtrip.find_run(pc, tmp_path, outcome.run, outcome.group)  # type: ignore[arg-type]
+
+
+def test_a_deleted_group_cannot_run_again(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+    outcome = _fill(pc, FakeEngine(), [1, 2], tmp_path)
+    pc.cmd("layer.delete", {"layer": outcome.group})
+
+    with pytest.raises(placeholder.PlacementError, match="group of variations is gone"):
+        roundtrip.find_run(pc, tmp_path, outcome.run, outcome.group)  # type: ignore[arg-type]

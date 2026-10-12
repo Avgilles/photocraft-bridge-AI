@@ -17,11 +17,13 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -35,6 +37,7 @@ from xp_photocraft.config import (
     PROJECT_WORK_DIR,
     REGION_FILE,
     REMOVE_PROMPT,
+    RUN_FILE,
     RUNS_DIR,
 )
 from xp_photocraft.control import Control, exclusive
@@ -75,6 +78,10 @@ class NoSelectionError(RuntimeError):
     """The active document has no selection to fill."""
 
 
+class RunGoneError(RuntimeError):
+    """An earlier run's region and mask are not kept any more: it cannot be run again."""
+
+
 def fill_selection(
     pc: Control,
     engine: Engine,
@@ -83,20 +90,31 @@ def fill_selection(
     work: Path,
     layer_name: str,
     workflow: str = "",
+    settings: list[dict[str, Any]] | None = None,
 ) -> Outcome:
-    """Repaint the active document's selection from ``prompt``, once per seed."""
-    return _repaint(pc, engine, prompt, seeds, work, layer_name, "fill", workflow)
+    """Repaint the active document's selection from ``prompt``, once per seed.
+
+    ``settings[k]`` are the workflow settings variation ``k`` ran with, kept with it.
+    """
+    return _repaint(pc, engine, prompt, seeds, work, layer_name, "fill", workflow, settings)
 
 
 def remove_selection(
-    pc: Control, engine: Engine, seeds: list[int], work: Path, layer_name: str, workflow: str = ""
+    pc: Control,
+    engine: Engine,
+    seeds: list[int],
+    work: Path,
+    layer_name: str,
+    workflow: str = "",
+    settings: list[dict[str, Any]] | None = None,
 ) -> Outcome:
     """Erase what the selection holds and rebuild the background, once per seed.
 
     The model is shown PhotoCraft's classical Content-Aware Fill of the selection, not the
     object: given the object, the edit model redraws it (measured 2026-10-09 on the couple).
     """
-    return _repaint(pc, engine, REMOVE_PROMPT, seeds, work, layer_name, "remove", workflow)
+    prompt = REMOVE_PROMPT
+    return _repaint(pc, engine, prompt, seeds, work, layer_name, "remove", workflow, settings)
 
 
 def _repaint(
@@ -108,10 +126,13 @@ def _repaint(
     layer_name: str,
     mode: str,
     workflow: str,
+    settings: list[dict[str, Any]] | None,
 ) -> Outcome:
     run = _Run(work, layer_name, prompt if mode == "fill" else "", len(seeds))
     with exclusive(work):
         batch = _start(pc, run, layer_name, prompt, mode, workflow, seeds)
+    batch.settings = settings or [{} for _ in seeds]
+    _keep_run(batch)
     try:
         engine.generate(
             run.dir / REGION_FILE,
@@ -177,6 +198,10 @@ class _Batch:
     record: dict[str, object]
     archive: Path | None
     placed: list[Variation] = field(default_factory=list)
+    settings: list[dict[str, Any]] = field(default_factory=list)
+    # A re-run numbers its variation after those already in the group, and keeps its name.
+    numbered_from: int = 0
+    rename: bool = True
 
     def land(self, k: int, png: bytes) -> None:
         """Place result ``k`` (the engine's ``on_image``), then keep it in xp-work."""
@@ -191,21 +216,23 @@ class _Batch:
         self.placed.append(Variation(layer, self.seeds[k]))
         count = len(self.seeds)
         logger.info("%s %d/%d placed at %s", self.layer_name, len(self.placed), count, self.crop)
-        variation = {"seed": self.seeds[k], "variation": k + 1, "variations": count}
-        archive_result(png, self.record | variation, self.archive)
+        settings = self.settings[k] if k < len(self.settings) else {}
+        variation = {"seed": self.seeds[k], "variation": self.numbered_from + k + 1}
+        archive_result(png, self.record | variation | {"settings": settings}, self.archive)
 
     def _place(self, k: int, path: str) -> int:
         if not self.holder.group:
             return placeholder.place(self.pc, self.holder, path, self.layer_name, self.run.step(1))
         arrived = len(self.placed) + 1
+        group_name = self.run.group_name(None if arrived == len(self.seeds) else arrived)
         return placeholder.place_variation(
             self.pc,
             self.holder,
             path,
-            self.run.variation_name(k, self.seeds[k]),
+            self.run.variation_name(self.numbered_from + k, self.seeds[k]),
             shown=not self.placed,
-            group_name=self.run.group_name(None if arrived == len(self.seeds) else arrived),
-            step=self.run.step(k + 1),
+            group_name=group_name if self.rename else "",
+            step=self.run.step(self.numbered_from + k + 1),
         )
 
     def abort(self) -> None:
@@ -219,13 +246,18 @@ class _Batch:
 
 
 class _Run:
-    """One run's folder in the work dir, and the names it gives PhotoCraft."""
+    """One run's folder in the work dir, and the names it gives PhotoCraft.
 
-    def __init__(self, work: Path, layer_name: str, prompt: str, count: int) -> None:
-        self.id = f"{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
+    ``run_id``: an earlier run's, for a re-run (its folder may have been pruned: made again).
+    """
+
+    def __init__(
+        self, work: Path, layer_name: str, prompt: str, count: int, run_id: str = ""
+    ) -> None:
+        self.id = run_id or f"{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
         self.work = work
         self.dir = work / RUNS_DIR / self.id
-        self.dir.mkdir(parents=True)
+        self.dir.mkdir(parents=True, exist_ok=bool(run_id))
         self._title = f"{layer_name} ×{count}" + (f" — {_short(prompt)}" if prompt else "")
         self._count = count
         _prune_runs(work / RUNS_DIR)
@@ -249,6 +281,131 @@ class _Run:
     def variation_name(self, k: int, seed: int) -> str:
         """``Variation <n> · seed <s> · <run>``: what PhotoCraft XP's picker and a re-run read."""
         return f"Variation {k + 1} · seed {seed} · {self.id}"
+
+
+def _keep_run(batch: _Batch) -> None:
+    """Keep the run's region, mask and description for a re-run: beside the document if saved.
+
+    The work dir keeps only the newest runs; ``xp-work`` next to a saved document keeps them all.
+    """
+    meta = batch.record | {
+        "seeds": batch.seeds,
+        "settings": batch.settings,
+        "size": list(batch.doc_size),
+    }
+    (batch.run.dir / RUN_FILE).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if batch.archive is None:
+        return
+    target = batch.archive / RUNS_DIR / batch.run.id
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        for name in (REGION_FILE, MASK_FILE, RUN_FILE):
+            shutil.copy2(batch.run.dir / name, target / name)
+    except OSError as e:  # a read-only project folder must not fail the run
+        logger.warning("run %s not kept beside the document: %s", batch.run.id, e)
+
+
+@dataclass(frozen=True)
+class EarlierRun:
+    """A run found again for a re-run: its description, folder, and group in PhotoCraft."""
+
+    meta: dict[str, Any]
+    folder: Path
+    document: str
+    revision: int
+    group: int
+    # The highest "Variation <n>" in the group, for the next one's number.
+    last_number: int
+
+    def settings(self, seed: int) -> dict[str, Any]:
+        """The settings the variation of ``seed`` ran with ({} for none)."""
+        seeds, settings = self.meta.get("seeds", []), self.meta.get("settings", [])
+        return dict(settings[seeds.index(seed)]) if seed in seeds[: len(settings)] else {}
+
+
+def find_run(pc: Control, work: Path, run_id: str, group: int) -> EarlierRun:
+    """Find run ``run_id`` again, from its group of variations (layer id ``group``).
+
+    Raises PlacementError when the group is gone, RunGoneError when the run's region and mask
+    are not kept any more.
+    """
+    with exclusive(work):
+        doc, path = _document_holding(pc, group)
+    names = [c["name"] for c in placeholder.find(doc["layers"], group).get("children", [])]
+    numbers = [int(m.group(1)) for n in names if (m := _VARIATION.match(n))]
+    for folder in (_archive_of(path, work, run_id), work / RUNS_DIR / run_id):
+        if folder is not None and (folder / RUN_FILE).is_file():
+            meta = json.loads((folder / RUN_FILE).read_text(encoding="utf-8"))
+            last = max(numbers, default=0)
+            return EarlierRun(meta, folder, str(doc["name"]), int(doc["revision"]), group, last)
+    raise RunGoneError(f"run {run_id} is not kept any more: generate again from a selection")
+
+
+def rerun_variation(
+    pc: Control,
+    engine: Engine,
+    work: Path,
+    earlier: EarlierRun,
+    seed: int,
+    prompt: str,
+    settings: dict[str, Any],
+) -> Outcome:
+    """One more variation of an earlier run, into its group: same region and mask, one seed.
+
+    It is shown (the others hidden) and keeps what made it in ``xp-work``, like any variation.
+    Deleting the group cancels it; nothing else is touched if it fails.
+    """
+    meta = earlier.meta
+    count = len(meta.get("seeds", [])) or 1
+    title_prompt = str(meta["prompt"]) if meta["mode"] == "fill" else ""
+    run = _Run(work, str(meta["layer"]), title_prompt, count, run_id=str(meta["run"]))
+    holder = placeholder.Placeholder(earlier.document, 0, earlier.revision, earlier.group)
+    record = {k: v for k, v in meta.items() if k not in ("seeds", "settings", "size")}
+    batch = _Batch(
+        pc,
+        run,
+        holder,
+        Rect(*meta["placed"]),
+        (int(meta["size"][0]), int(meta["size"][1])),
+        [seed],
+        str(meta["layer"]),
+        record | {"prompt": prompt},
+        _archive_of(str(meta["document"]), work, ""),
+        settings=[settings],
+        numbered_from=earlier.last_number,
+        rename=False,
+    )
+    engine.generate(
+        earlier.folder / REGION_FILE,
+        earlier.folder / MASK_FILE,
+        prompt,
+        [seed],
+        str(meta["mode"]),
+        batch.land,
+        still_wanted=placeholder.Watch(pc, holder),
+    )
+    return Outcome(batch.crop, run.id, earlier.group, batch.placed)
+
+
+# A variation's layer name: what the picker and a re-run read (see _Run.variation_name).
+_VARIATION = re.compile(r"^Variation (\d+) · seed (\d+) · (\S+)")
+
+
+def _document_holding(pc: Control, layer: int) -> tuple[dict[str, Any], str]:
+    """The inspected document holding ``layer``, and its path ("" if never saved)."""
+    for doc in pc.cmd("session.inspect")["documents"]:
+        inspected: dict[str, Any] = pc.cmd("document.inspect", {"document": doc["index"]})
+        if placeholder.find(inspected["layers"], layer):
+            return inspected, str(doc.get("path") or "")
+    raise placeholder.PlacementError("the group of variations is gone")
+
+
+def _archive_of(doc_path: str, work: Path, run_id: str) -> Path | None:
+    """``xp-work/<document>`` (or its run's folder there) of a saved document; None otherwise."""
+    folder = project_work_dir(doc_path, work)
+    if folder is None or not run_id:
+        return folder
+    return folder / RUNS_DIR / run_id
 
 
 def _short(prompt: str, chars: int = 40) -> str:
@@ -282,7 +439,10 @@ def archive_result(png: bytes, record: dict[str, object], folder: Path | None) -
         return
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        name = f"{time.strftime('%Y%m%d-%H%M%S')}_{record['mode']}_{record['seed']}"
+        base = f"{time.strftime('%Y%m%d-%H%M%S')}_{record['mode']}_{record['seed']}"
+        name, n = base, 2
+        while (folder / f"{name}.png").exists():  # a re-run of that seed within the second
+            name, n = f"{base}-{n}", n + 1
         (folder / f"{name}.png").write_bytes(png)
         (folder / f"{name}.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
     except OSError as e:  # a read-only or vanished project folder must not fail the fill

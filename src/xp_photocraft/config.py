@@ -38,6 +38,8 @@ TOKEN_FILENAME = "control.token"
 # by side never share a file; the newest ones are kept, for a re-run.
 RUNS_DIR = "runs"
 KEEP_RUNS = 10
+# What a run was (document, crop, prompt, workflow, seeds, settings): read back by a re-run.
+RUN_FILE = "run.json"
 # Held while a run edits PhotoCraft (export, card, placement): another run waits its turn, since
 # each sequence assumes the active document stays put. Released by the OS if a run dies.
 LOCK_FILE = "photocraft.lock"

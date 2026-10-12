@@ -89,7 +89,7 @@ class Comfy:
         found: list[str] = []
         for node in graph.values():
             class_type = str(node.get("class_type"))
-            spec = self._spec(class_type)
+            spec = self.spec(class_type)
             if spec is None:
                 found.append(f"{class_type}: this node type is not on the ComfyUI server")
                 continue
@@ -101,14 +101,14 @@ class Comfy:
                     found.append(f"{class_type}: {_basename(value)} is not on the ComfyUI server")
         return found
 
-    def _spec(self, node: str) -> dict[str, Any] | None:
+    def spec(self, node: str) -> dict[str, Any] | None:
         """``node``'s input spec from /object_info; None for a node type the server lacks."""
         info: dict[str, Any] = self._http.get(f"/object_info/{node}").json()
         return info[node].get("input", {}) if node in info else None
 
     def _server_file(self, node: str, name_input: str, files: tuple[str, ...]) -> str:
         """The server's name for the first of ``files`` it has (in any subfolder), else ""."""
-        by_file = {_basename(n): n for n in _choices(self._spec(node) or {}, name_input) or []}
+        by_file = {_basename(n): n for n in _choices(self.spec(node) or {}, name_input) or []}
         return next((by_file[f] for f in files if f in by_file), "")
 
     def upload(self, file: Path) -> str:

@@ -76,6 +76,8 @@ class Registry(BaseModel):
     assign: dict[str, str] = {}
     favorites: list[str] = []
     recent: list[str] = []
+    # The settings each workflow last ran with: {"set": {id: text}, "vary": {id: text}}.
+    settings: dict[str, dict[str, dict[str, str]]] = {}
 
 
 class WorkflowsError(ValueError):
@@ -189,6 +191,15 @@ def remember(path: Path, workflow_id: str) -> None:
     saved = _read(path)
     others = [r for r in saved.recent if r != workflow_id]
     saved.recent = [workflow_id, *others][:RECENT_MAX]
+    _write(path, saved)
+
+
+def remember_settings(
+    path: Path, workflow_id: str, fixed: dict[str, str], varied: dict[str, str]
+) -> None:
+    """Keep the settings ``workflow_id`` was given (``--set``, ``--vary``), for next time."""
+    saved = _read(path)
+    saved.settings[workflow_id] = {"set": fixed, "vary": varied}
     _write(path, saved)
 
 

@@ -170,14 +170,16 @@ def place_variation(
 ) -> int:
     """Paste the result in ``placed`` into the group, on top, shown or hidden; rename the group.
 
-    The card leaves with the first variation. Return the variation's layer id.
+    A shown variation hides the others (one at a time is the point). The card leaves with the
+    first variation; an empty ``group_name`` leaves the group's name as it is (a re-run). Return
+    the variation's layer id.
     """
     edits = _Step(pc, step)
     artist_doc = int(pc.cmd("session.inspect")["active"])
     _activate(pc, placeholder)
     _copy_file(pc, placed)
     doc = _activate(pc, placeholder)
-    children = _find(doc["layers"], placeholder.group).get("children", [])
+    children = find(doc["layers"], placeholder.group).get("children", [])
     if doc["hasSelection"]:
         edits.edit("select.saveSelection", {"name": ARTIST_CHANNEL})
     # Pasted above the active layer: a child of the group, so the result lands inside it.
@@ -185,9 +187,13 @@ def place_variation(
     edits.edit("edit.pasteSpecial.pasteInPlace")
     result = int(pc.cmd("document.inspect")["activeLayer"])
     edits.edit("layer.setProps", {"layer": result, "name": layer_name, "visible": shown})
-    if any(child["id"] == placeholder.layer for child in children):
-        edits.edit("layer.delete", {"layer": placeholder.layer})
-    edits.edit("layer.setProps", {"layer": placeholder.group, "name": group_name})
+    for child in children:
+        if child["id"] == placeholder.layer:
+            edits.edit("layer.delete", {"layer": placeholder.layer})
+        elif shown and child.get("visible", True):
+            edits.edit("layer.setProps", {"layer": child["id"], "visible": False})
+    if group_name:
+        edits.edit("layer.setProps", {"layer": placeholder.group, "name": group_name})
     _restore(pc, edits, doc, placeholder, artist_doc, placeholder.group)
     return result
 
@@ -278,15 +284,16 @@ def _activate(pc: Control, placeholder: Placeholder) -> dict[str, Any]:
 
 
 def _has_layer(layers: list[dict[str, Any]], layer_id: int) -> bool:
-    return bool(_find(layers, layer_id))
+    return bool(find(layers, layer_id))
 
 
-def _find(layers: list[dict[str, Any]], layer_id: int) -> dict[str, Any]:
-    """The layer ``layer_id`` anywhere in the tree (groups list theirs under "children"); {}."""
+def find(layers: list[dict[str, Any]], layer_id: int) -> dict[str, Any]:
+    """The layer ``layer_id`` anywhere in an inspected tree (groups list theirs under
+    "children"); {} when it is not there."""
     for layer in layers:
         if layer["id"] == layer_id:
             return layer
-        found = _find(layer.get("children", []), layer_id)
+        found = find(layer.get("children", []), layer_id)
         if found:
             return found
     return {}

@@ -20,6 +20,7 @@ from typing import Any, Protocol
 
 from PIL import Image
 
+from xp_photocraft import params
 from xp_photocraft.comfy import Cancelled, Comfy
 from xp_photocraft.config import (
     GEN_MAX_MP,
@@ -65,10 +66,17 @@ class ComfyGraph:
     ``pc:mask`` (a LoadImage or LoadImageMask; white = repaint), ``pc:seed`` (``seed`` or
     ``noise_seed``; else the ``pc:prompt`` node's own), ``pc:output`` (the image to keep; else
     the first saved one), ``pc:scale`` (``megapixels`` or ``resolution``: the region's own size,
-    clamped). One title can carry several tags, space-separated.
+    clamped). One title can carry several tags, space-separated. ``settings[k]`` sets inputs of
+    variation ``k`` (``<node>.<input>``: value, see ``params``).
     """
 
-    def __init__(self, comfy: Comfy, graph: dict[str, Any], template: str = "{prompt}") -> None:
+    def __init__(
+        self,
+        comfy: Comfy,
+        graph: dict[str, Any],
+        template: str = "{prompt}",
+        settings: list[dict[str, Any]] | None = None,
+    ) -> None:
         missing = missing_tags(graph)
         if missing:
             raise EngineError(f"the workflow has no node titled {' or '.join(missing)}")
@@ -80,6 +88,7 @@ class ComfyGraph:
         if template == "{prompt}" and "{prompt}" in own:
             template = own
         self._comfy, self._graph, self._template = comfy, graph, template
+        self._settings = settings or []
 
     def generate(
         self,
@@ -97,6 +106,8 @@ class ComfyGraph:
         mask_name = self._comfy.upload(mask) if "pc:mask" in tagged else ""
         megapixels = generation_megapixels(region) if "pc:scale" in tagged else 0.0
         graphs = [self._filled(image, mask_name, megapixels, prompt, seed) for seed in seeds]
+        for graph, settings in zip(graphs, self._settings, strict=False):
+            params.apply(graph, settings)
         output = next((i for i, n in self._graph.items() if n is tagged.get("pc:output")), "")
         self._comfy.run_all(graphs, output, on_image, still_wanted)
 

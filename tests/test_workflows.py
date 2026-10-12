@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from click.testing import CliRunner
 from PIL import Image
@@ -570,3 +571,135 @@ def test_fill_variations_get_one_seed_each_and_land_in_one_group(
     assert too_many.exit_code == 2  # at most 8
     saved = json.loads((tmp_path / "xp-photocraft" / "workflows.json").read_text("utf-8"))
     assert saved["recent"] == ["qwen-edit"]
+
+
+def _settings_catalog(data: Path) -> Path:
+    """A catalog with one workflow whose app shows its steps and sampler."""
+    folder = data / "workflows" / "Local" / "Tuned"
+    folder.mkdir(parents=True)
+    graph = json.loads(json.dumps(_GRAPH))
+    graph["4"]["inputs"].update({"steps": 8, "sampler_name": "euler"})
+    (folder / "workflow.json").write_text(json.dumps(graph), encoding="utf-8")
+    inputs = [
+        ["r:4:steps", "steps", {"description": "slower, finer"}],
+        ["r:4:sampler_name", "sampler"],
+    ]
+    app = {"extra": {"linearData": {"inputs": inputs, "outputs": ["6"]}}}
+    (folder / "app.json").write_text(json.dumps(app), encoding="utf-8")
+    return folder
+
+
+class _SpecComfy(_FakeComfy):
+    """A server that knows the sampler's inputs."""
+
+    def spec(self, class_type: str) -> dict[str, Any] | None:
+        steps = ["INT", {"min": 1, "max": 100, "step": 1}]
+        return {"required": {"steps": steps, "sampler_name": [["euler", "dpmpp_2m"]]}}
+
+
+def test_params_lists_what_the_app_shows_with_the_last_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "Comfy", _SpecComfy)
+    data = tmp_path / "xp-photocraft"
+    _settings_catalog(data)
+    registry.remember_settings(data / "workflows.json", "Tuned", {"4.steps": "12"}, {})
+
+    listed = json.loads(CliRunner().invoke(cli.cli, ["workflows"]).stdout)
+    reply = json.loads(CliRunner().invoke(cli.cli, ["params", "Tuned"]).stdout)
+    plain = json.loads(CliRunner().invoke(cli.cli, ["params", "qwen-edit"]).stdout)
+
+    assert {w["id"]: w["settings"] for w in listed["workflows"]}["Tuned"] is True
+    assert [(p["id"], p["kind"], p["label"]) for p in reply["params"]] == [
+        ("4.steps", "int", "steps"),
+        ("4.sampler_name", "choice", "sampler"),
+    ]
+    assert reply["params"][0]["maximum"] == 100 and reply["set"] == {"4.steps": "12"}
+    assert (plain["ok"], plain["params"]) == (True, [])  # no app: nothing but the seed
+
+
+def test_params_without_the_server_still_lists_the_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    class Down(_FakeComfy):
+        def spec(self, class_type: str) -> dict[str, Any] | None:
+            raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(cli, "Comfy", Down)
+    _settings_catalog(tmp_path / "xp-photocraft")
+
+    reply = json.loads(CliRunner().invoke(cli.cli, ["params", "Tuned"]).stdout)
+
+    assert [(p["kind"], p["choices"]) for p in reply["params"]] == [("int", []), ("text", [])]
+    assert reply["warnings"] == ["settings without ranges or choices: ComfyUI server unreachable"]
+
+
+def test_fill_settings_reach_each_variation_and_are_kept_for_next_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "Comfy", _FakeComfy)
+    monkeypatch.setattr(cli, "Control", lambda port, token: object())
+    data = tmp_path / "xp-photocraft"
+    _settings_catalog(data)
+    seen: dict[str, Any] = {}
+
+    def fill(pc: object, engine: Any, prompt: str, seeds: list[int], *rest: Any) -> Any:
+        seen["engine"], seen["settings"] = engine, rest[-1]
+        return roundtrip.Outcome(roundtrip.Rect(0, 0, 1, 1), "r", 9, [])
+
+    monkeypatch.setattr(roundtrip, "fill_selection", fill)
+    args = ["fill", "--prompt", "x", "--workflow", "Tuned", "--variations", "3"]
+    result = CliRunner().invoke(
+        cli.cli, [*args, "--set", "4.sampler_name=dpmpp_2m", "--vary", "4.steps=4..12"]
+    )
+    wrong = CliRunner().invoke(cli.cli, [*args, "--set", "4.nope=1"])
+
+    expected = [{"4.sampler_name": "dpmpp_2m", "4.steps": s} for s in (4, 8, 12)]
+    assert result.exit_code == 0 and seen["settings"] == expected
+    assert seen["engine"]._settings == expected  # each queued graph gets its own
+    saved = json.loads((data / "workflows.json").read_text("utf-8"))["settings"]["Tuned"]
+    assert saved == {"set": {"4.sampler_name": "dpmpp_2m"}, "vary": {"4.steps": "4..12"}}
+    assert wrong.exit_code == 1 and "4.nope: no such setting" in json.loads(wrong.stdout)["error"]
+
+
+def test_rerun_takes_the_variation_s_settings_and_prompt_unless_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "Comfy", _FakeComfy)
+    monkeypatch.setattr(cli, "Control", lambda port, token: object())
+    _settings_catalog(tmp_path / "xp-photocraft")
+    meta = {
+        "mode": "fill",
+        "layer": "Generative Fill",
+        "workflow": "Tuned",
+        "prompt": "a plate",
+        "run": "r1",
+        "seeds": [7, 8],
+        "settings": [{"4.steps": 4}, {"4.steps": 8}],
+    }
+    earlier = roundtrip.EarlierRun(meta, tmp_path, "poster.png", 3, 42, 2)
+    monkeypatch.setattr(roundtrip, "find_run", lambda *args: earlier)
+    seen: list[tuple[str, dict[str, Any]]] = []
+
+    def rerun(
+        pc: object, engine: Any, work: Path, found: Any, seed: int, prompt: str, s: Any
+    ) -> Any:
+        seen.append((prompt, s))
+        return roundtrip.Outcome(
+            roundtrip.Rect(0, 0, 1, 1), "r1", 42, [roundtrip.Variation(60, seed)]
+        )
+
+    monkeypatch.setattr(roundtrip, "rerun_variation", rerun)
+    base = ["rerun", "--run", "r1", "--seed", "8", "--group", "42"]
+
+    same = CliRunner().invoke(cli.cli, base)
+    edited = CliRunner().invoke(cli.cli, [*base, "--prompt", "a red plate", "--set", "4.steps=20"])
+
+    assert (same.exit_code, edited.exit_code) == (0, 0)
+    assert seen == [("a plate", {"4.steps": 8}), ("a red plate", {"4.steps": 20})]
+    assert json.loads(edited.stdout)["variations"] == [{"layer": 60, "seed": 8}]

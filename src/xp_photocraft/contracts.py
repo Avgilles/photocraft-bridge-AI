@@ -7,6 +7,7 @@ older PhotoCraft XP keeps reading a newer bridge.
 from __future__ import annotations
 
 import sys
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -56,6 +57,8 @@ class WorkflowChoice(BaseModel):
     id: str
     label: str
     category: str = ""
+    # It has an App Builder save: ``params`` lists the settings it shows.
+    settings: bool = False
 
 
 class WorkflowsResult(BaseModel):
@@ -81,6 +84,22 @@ class ImportResult(BaseModel):
     id: str = ""
     # The name exists already: run again with --replace once the artist agreed.
     exists: bool = False
+    warnings: list[str] = []
+    error: str = ""
+
+
+class ParamsResult(BaseModel):
+    """``params@1``: a workflow's settings (see ``params.Param``), and those it last ran with.
+
+    ``set`` and ``vary`` are what ``--set`` and ``--vary`` were given last (``id``: text).
+    """
+
+    contract: str = "params@1"
+    ok: bool
+    workflow: str
+    params: list[dict[str, Any]] = []
+    set: dict[str, str] = {}
+    vary: dict[str, str] = {}
     warnings: list[str] = []
     error: str = ""
 
