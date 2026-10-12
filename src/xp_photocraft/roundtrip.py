@@ -87,15 +87,22 @@ def _repaint(
     _export_region(pc, active, crop, work / REGION_FILE, mode)
     _export_mask(pc, active, crop, work / MASK_FILE)
     lines = (
-        [layer_name, f'"{prompt}"', "generating…"]
+        [layer_name, f'"{prompt}"', placeholder.GENERATING]
         if mode == "fill"
-        else [layer_name, "generating…"]
+        else [layer_name, placeholder.GENERATING]
     )
     card = work / PLACEHOLDER_FILE
     placeholder.draw_card(card, doc_size, (bounds.x, bounds.y, bounds.width, bounds.height), lines)
     holder = placeholder.add(pc, card, layer_name)
     try:
-        png = engine.generate(work / REGION_FILE, work / MASK_FILE, prompt, seed, mode)
+        png = engine.generate(
+            work / REGION_FILE,
+            work / MASK_FILE,
+            prompt,
+            seed,
+            mode,
+            still_wanted=lambda: placeholder.exists(pc, holder),
+        )
         write_placed(Image.open(io.BytesIO(png)), crop, doc_size, work / PLACED_FILE)
         placeholder.place(pc, holder, layer_name)
     except BaseException:

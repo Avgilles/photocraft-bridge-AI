@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from xp_photocraft.comfy import Comfy, ComfyError
+from xp_photocraft.comfy import Cancelled, Comfy, ComfyError
 
 
 def _comfy(api_key: str, sent: list[dict]) -> Comfy:
@@ -94,3 +94,28 @@ def test_run_keeps_the_saved_image_and_passes_the_api_key_only_when_set() -> Non
 
     assert sent[0]["extra_data"] == {"api_key_comfy_org": "key-123"}
     assert "extra_data" not in sent[1]
+
+
+@pytest.mark.parametrize("runs", [True, False])
+def test_a_withdrawn_job_leaves_the_queue_and_is_stopped_only_if_it_runs(runs: bool) -> None:
+    posted: list[tuple[str, dict]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST":
+            posted.append((path, json.loads(request.content)))
+        if path == "/prompt":
+            return httpx.Response(200, json={"prompt_id": "p1"})
+        if path == "/queue" and request.method == "GET":
+            # Not ours running: someone else's job, which must go on.
+            return httpx.Response(200, json={"queue_running": [[4, "p1" if runs else "other"]]})
+        return httpx.Response(200, json={})  # /history/p1: no result yet
+
+    comfy = Comfy("http://comfy.test")
+    comfy._http = httpx.Client(base_url="http://comfy.test", transport=httpx.MockTransport(handle))
+
+    with pytest.raises(Cancelled):
+        comfy.run({"1": {}}, still_wanted=lambda: False)
+
+    assert ("/queue", {"delete": ["p1"]}) in posted
+    assert (("/interrupt", {"prompt_id": "p1"}) in posted) == runs

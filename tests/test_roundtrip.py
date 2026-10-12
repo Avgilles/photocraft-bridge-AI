@@ -11,9 +11,10 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from xp_photocraft import roundtrip
+from xp_photocraft import placeholder, roundtrip
+from xp_photocraft.comfy import Cancelled
 from xp_photocraft.control import ControlError
-from xp_photocraft.placeholder import PlacementError
+from xp_photocraft.placeholder import Placeholder
 from xp_photocraft.roundtrip import Rect
 
 
@@ -51,6 +52,7 @@ class FakeControl:
             ]
             return {"active": self.active, "documents": names}
         if command == "document.inspect":
+            doc = self.docs[p["document"]] if "document" in p else doc
             return {
                 "name": doc["name"],
                 "hasSelection": doc["selection"],
@@ -97,13 +99,24 @@ class FakeControl:
 
 
 class FakeEngine:
-    """Returns a red PNG; ``meanwhile`` plays the artist while it "generates"."""
+    """Returns a red PNG; ``meanwhile`` plays the artist while it "generates", then the engine
+    asks ``still_wanted`` as ComfyGraph does at each poll."""
 
     def __init__(self, meanwhile: Callable[[], None] = lambda: None, fail: bool = False) -> None:
         self.meanwhile, self.fail, self.request = meanwhile, fail, ()  # type: ignore[var-annotated]
 
-    def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
+    def generate(
+        self,
+        region: Path,
+        mask: Path,
+        prompt: str,
+        seed: int,
+        mode: str,
+        still_wanted: Callable[[], bool] = lambda: True,
+    ) -> bytes:
         self.meanwhile()
+        if not still_wanted():
+            raise Cancelled("withdrawn")
         if self.fail:
             raise RuntimeError("server down")
         self.request = (region.name, mask.name, prompt, seed, mode)
@@ -182,16 +195,53 @@ def test_an_artist_painting_on_their_layer_keeps_it(tmp_path: Path) -> None:
     assert poster["active"] == 2 and poster["layers"][1] == 2  # result above, their layer active
 
 
-def test_deleting_the_placeholder_cancels_the_result(tmp_path: Path) -> None:
+def test_deleting_the_placeholder_stops_the_generation(tmp_path: Path) -> None:
     pc = FakeControl(tmp_path)
 
     def artist() -> None:
         pc.doc["layers"].remove(pc.doc["layers"][0])
 
-    with pytest.raises(PlacementError, match="placeholder deleted"):
+    with pytest.raises(Cancelled):
         roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
     assert [c for c, _ in pc.log].count("edit.pasteSpecial.pasteInPlace") == 1  # the card only
     assert _poster(pc)["layers"] == [2]
+
+
+def test_a_deletion_undone_before_the_next_check_goes_unnoticed(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)  # the bridge looks every half second: the run goes on
+
+    def artist() -> None:
+        card = pc.doc["layers"].pop(0)
+        pc.doc["layers"].insert(0, card)  # Ctrl+Z restores the very layer, same id
+
+    roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+
+    assert len(_poster(pc)["layers"]) == 2  # result in, placeholder out
+
+
+def test_the_check_reads_without_switching_documents(tmp_path: Path) -> None:
+    pc = FakeControl(tmp_path)
+
+    def artist() -> None:
+        pc._open("sketch.png")  # the artist moved on to another document
+
+    roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
+
+    checks = [p for c, p in pc.log if c == "document.inspect" and "document" in p]
+    assert checks == [{"document": 0}]  # the poster, read in place: nothing activated for it
+    assert pc.doc["name"] == "sketch.png"
+
+
+def test_a_placeholder_moved_into_a_group_is_still_there() -> None:
+    class GroupedControl:
+        def cmd(self, command: str, params: dict[str, Any] | None = None) -> Any:
+            if command == "session.inspect":
+                return {"documents": [{"index": 0, "name": "poster.png"}]}
+            return {"layers": [{"id": 9, "children": [{"id": 12}]}, {"id": 2}]}
+
+    pc = GroupedControl()
+    assert placeholder.exists(pc, Placeholder("poster.png", 12, 0))  # type: ignore[arg-type]
+    assert not placeholder.exists(pc, Placeholder("poster.png", 13, 0))  # type: ignore[arg-type]
 
 
 def test_two_documents_of_one_name_each_keep_their_own(tmp_path: Path) -> None:
@@ -213,7 +263,7 @@ def test_a_cancelled_result_leaves_the_artist_where_they_are(tmp_path: Path) -> 
         pc.doc["layers"].remove(pc.doc["layers"][0])  # deletes the placeholder, then moves on
         pc._open("sketch.png")
 
-    with pytest.raises(PlacementError, match="placeholder deleted"):
+    with pytest.raises(Cancelled):
         roundtrip.fill_selection(pc, FakeEngine(artist), "x", 1, tmp_path, "L")  # type: ignore[arg-type]
     assert pc.doc["name"] == "sketch.png"
 

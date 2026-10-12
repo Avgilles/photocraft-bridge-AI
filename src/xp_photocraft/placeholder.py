@@ -6,7 +6,9 @@ without touching PhotoCraft. ``place`` finds the document again (by name, then b
 layer), pastes the result just
 above the placeholder, masks it with the placeholder's mask (the selection), deletes the
 placeholder and restores whatever document, layer and selection the artist has by then.
-Deleting the placeholder meanwhile cancels the result.
+
+Deleting the placeholder meanwhile cancels the run for good: ``exists`` is asked at every poll of
+the generation, which is then stopped. Undoing the deletion brings the card back alone.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ ARTIST_CHANNEL = "xp-photocraft artist selection"
 _CARD_FILL = (24, 26, 32, 150)
 _CARD_LINE = (255, 255, 255, 170)
 _CARD_TEXT = (255, 255, 255, 255)
+# The card's last line and the layer's name: what the layer is, and how to cancel it.
+GENERATING = "generating… delete to cancel"
 
 
 class PlacementError(RuntimeError):
@@ -86,7 +90,7 @@ def add(pc: Control, card: Path, layer_name: str) -> Placeholder:
         pc.cmd("document.activate", {"document": active})
         pc.cmd("edit.pasteSpecial.pasteInPlace")
         layer = int(pc.cmd("document.inspect")["activeLayer"])
-        pc.cmd("layer.setProps", {"layer": layer, "name": f"{layer_name} (generating…)"})
+        pc.cmd("layer.setProps", {"layer": layer, "name": f"{layer_name} ({GENERATING})"})
         pc.cmd("select.loadSelection", {"channel": SELECTION_CHANNEL})
         pc.cmd("layer.layerMask.revealSelection")
     finally:
@@ -111,6 +115,16 @@ def place(pc: Control, placeholder: Placeholder, layer_name: str) -> None:
     pc.cmd("layer.layerMask.revealSelection")
     pc.cmd("layer.delete", {"layer": placeholder.layer})
     _restore(pc, doc, placeholder, artist_doc)
+
+
+def exists(pc: Control, placeholder: Placeholder) -> bool:
+    """Whether the placeholder is still in its document; only reads, the active one stays."""
+    session = pc.cmd("session.inspect")
+    named = [d["index"] for d in session["documents"] if d["name"] == placeholder.document]
+    return any(
+        _has_layer(pc.cmd("document.inspect", {"document": i})["layers"], placeholder.layer)
+        for i in named
+    )
 
 
 def discard(pc: Control, placeholder: Placeholder) -> None:
@@ -147,10 +161,18 @@ def _activate(pc: Control, placeholder: Placeholder) -> dict[str, Any]:
     for index in named:
         pc.cmd("document.activate", {"document": index})
         doc: dict[str, Any] = pc.cmd("document.inspect")
-        if any(layer["id"] == placeholder.layer for layer in doc["layers"]):
+        if _has_layer(doc["layers"], placeholder.layer):
             return doc
     pc.cmd("document.activate", {"document": session["active"]})
     raise PlacementError("placeholder deleted: result not placed")
+
+
+def _has_layer(layers: list[dict[str, Any]], layer_id: int) -> bool:
+    # A group lists its layers under "children": the artist may move the card into one.
+    return any(
+        layer["id"] == layer_id or _has_layer(layer.get("children", []), layer_id)
+        for layer in layers
+    )
 
 
 def _restore(

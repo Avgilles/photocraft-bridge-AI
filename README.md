@@ -69,11 +69,18 @@ xp-photocraft ── control protocol (loopback) ──► export region + margi
 
 - Only existing PhotoCraft commands are used: the region and the mask leave through throwaway
   duplicates written under PhotoCraft's automation root; the result comes back pasted in place.
-- **Keep working while it generates.** A placeholder layer, `Generative Fill (generating…)`, covers
-  the selection right away: a crossed frame naming the action and the prompt. The bridge then leaves
-  PhotoCraft alone until the result is ready, and puts it where the placeholder is (same document,
-  just above it, same mask), handing back whatever document, layer and selection you have by then.
-  Delete the placeholder to cancel.
+- **Keep working while it generates.** A placeholder layer,
+  `Generative Fill (generating… delete to cancel)`, covers the selection right away: a crossed
+  frame naming the action and the prompt. The bridge then leaves PhotoCraft alone until the result
+  is ready, and puts it where the placeholder is (same document, just above it, same mask), handing
+  back whatever document, layer and selection you have by then.
+- **Delete the placeholder to cancel.** While it waits, the bridge checks every half second that
+  the placeholder is still there, reading the document without switching to it. Once it is gone,
+  the job leaves ComfyUI's queue, or is stopped if it already runs (only that job), and nothing is
+  placed. A cancel is final: undoing the deletion brings back the card alone, with no generation
+  behind it; delete it again. A deletion undone within that half second goes unnoticed, and the run
+  goes on. Two limits: a Nano Banana image already requested from comfy.org is billed anyway, and
+  a workflow run by a command goes to its end, its result placed only if the card is back by then.
 - `remove` first shows the model PhotoCraft's classical Content-Aware Fill of the selection: given
   the object itself, an edit model tends to redraw it.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ from xp_photocraft.config import (
 
 class ComfyError(RuntimeError):
     """ComfyUI refused the graph, failed while running it, or produced no image."""
+
+
+class Cancelled(RuntimeError):
+    """The caller withdrew the job while it waited: taken off ComfyUI's queue, or stopped."""
 
 
 class Comfy:
@@ -81,22 +86,29 @@ class Comfy:
         response.raise_for_status()
         return str(response.json()["name"])
 
-    def run(self, graph: dict[str, Any], output_node: str = "") -> bytes:
+    def run(
+        self,
+        graph: dict[str, Any],
+        output_node: str = "",
+        still_wanted: Callable[[], bool] = lambda: True,
+    ) -> bytes:
         """Queue an API-format graph, wait for it, and return ``output_node``'s image.
 
         Without ``output_node``: the first saved image (a preview is a fallback, not a result).
+        ``still_wanted`` is asked at every poll; once it says no, the job is withdrawn and
+        Cancelled raised.
         """
         body = {"prompt": graph, "client_id": uuid.uuid4().hex, **self._extra}
         queued = self._http.post("/prompt", json=body)
         if queued.status_code != 200:
             raise ComfyError(f"graph refused: {_refusal(queued)}")
-        history = self._wait(str(queued.json()["prompt_id"]))
+        history = self._wait(str(queued.json()["prompt_id"]), still_wanted)
         image = _pick_image(history["outputs"], output_node)
         view = self._http.get("/view", params=image)
         view.raise_for_status()
         return view.content
 
-    def _wait(self, prompt_id: str) -> dict[str, Any]:
+    def _wait(self, prompt_id: str, still_wanted: Callable[[], bool]) -> dict[str, Any]:
         deadline = time.monotonic() + COMFY_JOB_TIMEOUT_S
         while time.monotonic() < deadline:
             entry: dict[str, Any] | None = (
@@ -106,8 +118,19 @@ class Comfy:
                 raise ComfyError(f"ComfyUI failed: {_execution_error(entry['status'])}")
             if entry and entry.get("outputs"):
                 return entry
+            if not still_wanted():
+                self._withdraw(prompt_id)
+                raise Cancelled(f"prompt {prompt_id} withdrawn")
             time.sleep(COMFY_POLL_S)
         raise ComfyError(f"no result after {COMFY_JOB_TIMEOUT_S:.0f} s (prompt {prompt_id})")
+
+    def _withdraw(self, prompt_id: str) -> None:
+        """Take the job off the queue, or stop it if it runs; other jobs are someone else's."""
+        self._http.post("/queue", json={"delete": [prompt_id]})
+        running = self._http.get("/queue").json().get("queue_running", [])
+        if any(len(job) > 1 and job[1] == prompt_id for job in running):
+            # A server older than targeted interrupts stops whatever runs: this very job.
+            self._http.post("/interrupt", json={"prompt_id": prompt_id})
 
 
 def _basename(name: str) -> str:

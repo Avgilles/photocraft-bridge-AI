@@ -253,7 +253,7 @@ class _FakeComfy:
     def upload(self, file: Path) -> str:
         return f"up_{file.name}"
 
-    def run(self, graph: dict[str, Any], output_node: str = "") -> bytes:
+    def run(self, graph: dict[str, Any], output_node: str = "", still_wanted: Any = None) -> bytes:
         self.graph, self.output = graph, output_node
         return b"png"
 

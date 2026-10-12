@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -9,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from xp_photocraft import cli, connection
-from xp_photocraft.comfy import ComfyError
+from xp_photocraft.comfy import Cancelled, ComfyError
 from xp_photocraft.config import DEFAULT_COMFY_URL
 
 
@@ -111,3 +112,21 @@ def test_fill_says_what_comfyui_did_without_its_address(
     # The last line is PhotoCraft's status bar: one line, in words, no URL (httpx puts it in some).
     assert result.stderr.strip().splitlines()[-1] == f"xp-photocraft fill: ComfyUI {shown}"
     assert "10.0.0.7" not in result.stdout + result.stderr
+
+
+def test_a_cancelled_fill_exits_0_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(_FailingComfy, "error", Cancelled("prompt p1 withdrawn"))
+    monkeypatch.setattr(cli, "Comfy", _FailingComfy)
+
+    result = CliRunner().invoke(cli.cli, ["fill", "--prompt", "a plate"])
+
+    # Exit 0: PhotoCraft's task bar shows the last line as news, not "Generative fill failed".
+    assert result.exit_code == 0
+    assert result.stderr.strip().splitlines()[-1] == (
+        "xp-photocraft fill: cancelled (placeholder deleted), generation stopped"
+    )
+    reply = json.loads(result.stdout)
+    assert (reply["ok"], reply["cancelled"]) == (False, True)

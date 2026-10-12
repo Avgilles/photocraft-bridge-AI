@@ -14,6 +14,7 @@ import copy
 import json
 import math
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -32,9 +33,21 @@ REQUIRED_TAGS = ("pc:image", "pc:prompt")
 
 
 class Engine(Protocol):
-    """What the round trip needs: the region and mask PNGs in, the image's PNG bytes out."""
+    """What the round trip needs: the region and mask PNGs in, the image's PNG bytes out.
 
-    def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes: ...
+    ``still_wanted`` answers False once the artist cancelled (deleted the placeholder): an engine
+    that can stops its job and raises ``comfy.Cancelled``.
+    """
+
+    def generate(
+        self,
+        region: Path,
+        mask: Path,
+        prompt: str,
+        seed: int,
+        mode: str,
+        still_wanted: Callable[[], bool] = ...,
+    ) -> bytes: ...
 
 
 class EngineError(RuntimeError):
@@ -65,7 +78,15 @@ class ComfyGraph:
             template = own
         self._comfy, self._graph, self._template = comfy, graph, template
 
-    def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
+    def generate(
+        self,
+        region: Path,
+        mask: Path,
+        prompt: str,
+        seed: int,
+        mode: str,
+        still_wanted: Callable[[], bool] = lambda: True,
+    ) -> bytes:
         """Fill the tagged nodes of a copy of the graph, run it, return its image."""
         graph = copy.deepcopy(self._graph)
         nodes = _tagged(graph)
@@ -87,7 +108,7 @@ class ComfyGraph:
         if {"seed", "noise_seed"} & nodes[seeded]["inputs"].keys():
             _set(nodes, seeded, ("seed", "noise_seed"), seed)
         output = next((i for i, n in graph.items() if n is nodes.get("pc:output")), "")
-        return self._comfy.run(graph, output)
+        return self._comfy.run(graph, output, still_wanted)
 
 
 def generation_megapixels(region: Path) -> float:
@@ -121,8 +142,18 @@ class Runner:
     def __init__(self, command: list[str], work: Path, timeout: float = RUNNER_TIMEOUT_S) -> None:
         self._command, self._work, self._timeout = command, work, timeout
 
-    def generate(self, region: Path, mask: Path, prompt: str, seed: int, mode: str) -> bytes:
+    def generate(
+        self,
+        region: Path,
+        mask: Path,
+        prompt: str,
+        seed: int,
+        mode: str,
+        still_wanted: Callable[[], bool] = lambda: True,
+    ) -> bytes:
         """Write the request, run the command on it, return the PNG it printed."""
+        # ponytail: a command runs to its end even once cancelled, its result placed only if the
+        # card is back by then; stop it through Popen and still_wanted if commands get long.
         request = self._work / REQUEST_FILE
         request.write_text(
             json.dumps(

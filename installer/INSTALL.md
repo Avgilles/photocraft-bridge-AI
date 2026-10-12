@@ -128,6 +128,10 @@ Select an area (rectangle, lasso…). A bar appears under it:
   selection.
 - **Remove**: PhotoCraft's classic fill, no AI.
 
+To cancel a generation, delete its card's layer (*… (generating… delete to cancel)*): within half a
+second the generation stops on ComfyUI and nothing is placed. Undoing the deletion brings back the
+card alone; delete it again.
+
 Each result is also kept **next to the document's file**, in `xp-work\<document name>\` (the model's
 image + a `.json` with the prompt, the workflow and the seed): one folder per project, nothing piles
 up elsewhere. On a document never saved, the bar first offers to save it.

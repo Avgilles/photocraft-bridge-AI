@@ -21,7 +21,7 @@ import httpx
 from pydantic import BaseModel
 
 from xp_photocraft import __version__, connection, registry, roundtrip
-from xp_photocraft.comfy import Comfy, ComfyError
+from xp_photocraft.comfy import Cancelled, Comfy, ComfyError
 from xp_photocraft.config import (
     ACTIONS,
     APP_DIR,
@@ -48,10 +48,15 @@ DOTENV_FILE = ".env"
 
 
 class FillResult(BaseModel):
-    """``fill@1``: what was placed, where, from which seed."""
+    """``fill@1``: what was placed, where, from which seed.
+
+    ``cancelled``: the artist deleted the placeholder, so nothing was placed (``ok`` false); not a
+    failure, the exit status is 0.
+    """
 
     contract: str = "fill@1"
     ok: bool
+    cancelled: bool = False
     mode: str
     workflow: str = ""
     layer: str = ""
@@ -223,6 +228,15 @@ def _run(
         workflow = registry.pick(reg, mode, workflow)
         engine = _engine(reg, workflow, server, root)
         rect = action(Control(port, root / TOKEN_FILENAME), engine, seed, root, workflow)
+    except Cancelled:
+        error = "cancelled (placeholder deleted), generation stopped"
+        click.echo(f"xp-photocraft {mode}: {error}", err=True)
+        _emit(
+            FillResult(
+                ok=False, cancelled=True, mode=mode, workflow=workflow, seed=seed, error=error
+            )
+        )
+        return  # exit 0: PhotoCraft's task bar shows it as news, not as a failure
     except (
         ControlError,
         ComfyError,
