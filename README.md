@@ -45,15 +45,25 @@ starts it with its control server):
   selection while it generates and you keep working; the result replaces it.
 - **Remove (AI)**: erases what is selected and rebuilds the background (include the shadow).
 - **Remove** is PhotoCraft's classic fill; *Inverse*, *Mask* and *Deselect* act on the selection.
-- **XP menu** (last in the menu bar): the model each action runs (built-in Qwen Edit 2511, Nano
-  Banana, Qwen Image 2.1 Turbo, or your own graphs), *Open Workflows Folder*, and the ComfyUI server.
+- **The workflow** of Generative fill is the list beside the field: starred ones first, then the
+  recent ones, then each category.
+- **×1 / ×3 / ×5** makes that many variations, one seed each, in one group. The first one to come
+  is shown; under the group, a picker shows one at a time (**◀ 2/5 ▶**), **Keep** keeps the shown
+  one as a plain masked layer, **↻** runs it again (its seed, the field's prompt or new settings),
+  **Cancel** stops those still to come. Each variation of a partner node (Nano Banana) is billed.
+- **Settings** (⚙): the settings a workflow shows, when it comes with an App Builder save (see
+  [Settings](#settings-comfyui-app-mode)); each can be spread over the variations (from → to).
+- **Several at once**: select elsewhere and generate again while a run goes on; each has its card,
+  ComfyUI queues them.
+- **XP menu** (last in the menu bar): the workflow of each action, by category with the starred and
+  recent ones and a search field, *Import Workflow…*, *Open Workflows Folder*, and the ComfyUI
+  server.
 
 ## Status
 
-First release (0.1.0). Tested on Windows 11 (RTX 4060 laptop, 8 GB), with ComfyUI on the same PC
-or on a Fedora 41 PC (RTX 3090) through an SSH tunnel. The Linux bridge installs and connects but has
-seen less use; macOS is untested; PhotoCraft XP is only built for Windows so far. One generation at
-a time; see [Limits](#limits).
+0.2.0. Tested on Windows 11 (RTX 4060 laptop, 8 GB), with ComfyUI on the same PC or on a Fedora 41
+PC (RTX 3090) through an SSH tunnel. The Linux bridge installs and connects but has seen less use;
+macOS is untested; PhotoCraft XP is only built for Windows so far. See [Limits](#limits).
 
 ## How it works
 
@@ -85,6 +95,15 @@ xp-photocraft ── control protocol (loopback) ──► export region + margi
   a workflow run by a command goes to its end, its result placed only if the card is back by then.
 - `remove` first shows the model PhotoCraft's classical Content-Aware Fill of the selection: given
   the object itself, an edit model tends to redraw it.
+- **Variations** (`--variations N`): the region is uploaded once and the N graphs (one seed each)
+  are queued at once; each result is pasted into one group carrying the selection's mask as soon as
+  it comes, named `Variation <n> · seed <s> · <run>` (what PhotoCraft XP's picker and a re-run
+  read). Deleting the group stops those still to come; a failure keeps those that came.
+- **Runs side by side** each work in their own folder of the work dir, and edit PhotoCraft only
+  while holding a lock file, so two runs never switch the active document under each other.
+  ComfyUI's ten-minute timeout counts from a prompt's start, not from its queueing.
+- **One undo step per result**: a run's edits share one History step (PhotoCraft's `coalesce`),
+  so a run never pushes your own steps out of the 50 History keeps.
 
 ## Install from source
 
@@ -128,12 +147,18 @@ The fork's task bar runs these commands; you can run them yourself too:
 
 ```bash
 xp-photocraft fill --prompt "a clean white licence plate, same night lighting"
-xp-photocraft remove
+xp-photocraft fill --prompt "a dragon" --variations 5            # five seeds, one group
+xp-photocraft fill --prompt "a dragon" --variations 3 --vary 3.steps=4..12 --set 3.cfg=1.5
+xp-photocraft remove --variations 3
+xp-photocraft rerun --run 142233-9f1c --seed 812 --group 57 --prompt "a red dragon"
 ```
 
-Each command prints one JSON line on stdout (`fill@1`, `connect@1`, `doctor@1`, `workflows@1`) and a
-readable report on stderr, whose last line is meant for a status bar: it never prints the server's
-address or a key.
+`rerun` takes what a variation's layer name says (`Variation 2 · seed 812 · 142233-9f1c`) and the
+group's layer id; PhotoCraft XP's ↻ does it for you.
+
+Each command prints one JSON line on stdout (`fill@1`, `connect@1`, `doctor@1`, `workflows@1`,
+`import@1`, `params@1`) and a readable report on stderr, whose last line is meant for a status bar:
+it never prints the server's address or a key.
 
 ## Connect to a ComfyUI server
 
@@ -154,20 +179,36 @@ authentication: never expose its port to the internet.
 
 ## Workflows
 
-Each action (`fill`, `remove`) runs one workflow. **Drop a graph exported from ComfyUI in the
-`workflows` folder of the data folder** and it is one more workflow, named after its file
-(`Flux Fill.json` → *Flux Fill*); the fork's XP menu lists it the next time it opens (*Open
-Workflows Folder* is in that menu) and assigns it to an action with a click.
+Each action (`fill`, `remove`) runs one workflow. A workflow is **a folder** of the data folder's
+`workflows` folder, named as the menus show it, holding `workflow.json` (the graph exported from
+ComfyUI) and optionally `app.json` (the same graph saved from ComfyUI's App Builder: its
+[settings](#settings-comfyui-app-mode)). A folder above it is its **category**, a submenu of the XP
+menu (one level):
+
+```
+workflows/
+  Local/Qwen Edit 2511 (ComfyUI)/workflow.json
+  Local/Qwen Image 2.1 Turbo (non-commercial)/workflow.json
+  Cloud/Nano Banana 2.1 (comfy.org)/workflow.json
+  Flux Fill/workflow.json, app.json
+```
+
+**Import** does it for you, from the XP menu (*Import Workflow…*) or the command line: it takes an
+export (and the `.app.json` saved beside it) or a whole folder, refuses a file that is not an API
+export or lacks the `pc:*` titles, and says which node types or model files the server lacks.
 
 ```bash
-xp-photocraft workflows                  # every workflow, and the one each action runs
-xp-photocraft assign fill "Flux Fill"    # Generative Fill now runs workflows/Flux Fill.json
+xp-photocraft import "Flux Fill.json" --category Local   # Flux Fill.app.json comes along
+xp-photocraft workflows                  # every workflow, its category, the starred and recent
+xp-photocraft assign fill "Flux Fill"    # Generative Fill now runs it
+xp-photocraft favorite "Flux Fill"       # starred: listed first (--off to unstar)
 xp-photocraft fill --prompt "..." --workflow qwen-edit   # one run with another workflow
 ```
 
-`workflows.json` in the data folder is optional: it keeps the assignments, and can declare a
-workflow by hand — a graph elsewhere, an external command, another label
-([example](examples/workflows.json)).
+A 0.1 catalog (graphs dropped loose in `workflows`) still works; the installer moves them into
+folders. `workflows.json` in the data folder keeps the assignments, the starred and recent
+workflows and the settings last used, and can declare a workflow by hand — a graph elsewhere, an
+external command, another label ([example](examples/workflows.json)).
 
 ### Built-in: `qwen-edit`
 
@@ -186,9 +227,9 @@ ComfyUI's own *Qwen Image Edit 2511* template downloads, found by file name in a
 
 The graph is a plain API file, [`src/xp_photocraft/qwen-edit-2511.api.json`](src/xp_photocraft/qwen-edit-2511.api.json).
 A release puts it in the `workflows` folder as
-[`Qwen Edit 2511 (ComfyUI).json`](examples/workflows/Qwen%20Edit%202511%20(ComfyUI).json): that file *is* the
-built-in workflow (one menu entry; edit it to change the default, delete it and the copy inside the
-bridge takes over). Its loaders follow the server's files: the `int8_convrot` or `bf16` variant if
+[`Local/Qwen Edit 2511 (ComfyUI)`](examples/workflows/Local/Qwen%20Edit%202511%20(ComfyUI)/workflow.json):
+that folder *is* the built-in workflow (one menu entry; edit it to change the default, delete it and
+the copy inside the bridge takes over). Its loaders follow the server's files: the `int8_convrot` or `bf16` variant if
 that is what the server has, and any subfolder.
 
 ### Your own ComfyUI workflow
@@ -208,14 +249,28 @@ click ▸ Title) so the bridge knows where things go:
 A title can carry several tags, space-separated: Qwen Image 2.1's text encoder is
 `pc:prompt pc:scale`.
 
-Then drop the file in the `workflows` folder. A model that needs instructions around what you type
-gets them in the prompt node itself, before the export: `Image 2 is a mask… In the white area:
+Then import it (XP menu ▸ *Import Workflow…*). A model that needs instructions around what you
+type gets them in the prompt node itself, before the export: `Image 2 is a mask… In the white area:
 {prompt}.` (or in a `"prompt"` entry of `workflows.json`). The result is resized to the region and
 masked by your selection, whatever size the graph returns.
 
+### Settings (ComfyUI App Mode)
+
+In ComfyUI, **App Mode ▸ App Builder** lets you pick which inputs of a graph its app shows (steps,
+guidance, a sampler, Nano Banana's options…), name them and describe them. Save that app beside the
+export (`Flux Fill.app.json` next to `Flux Fill.json`) and import both: PhotoCraft XP's ⚙ shows
+those fields, typed and bounded as ComfyUI declares them, and each can be spread over the
+variations. The bridge reads the app's `extra.linearData` and sets the same node's input in the
+API export, so re-export both after editing the graph. The bridge's own inputs (the `pc:*` titles)
+are never settings; a field promoted from a subgraph is not supported yet (the import says so).
+
+```bash
+xp-photocraft params "Flux Fill"         # its settings, and those it last ran with
+```
+
 ### Shipped: Qwen Image 2.1 Turbo (local, non-commercial)
 
-[`examples/workflows/Qwen Image 2.1 Turbo (non-commercial).json`](examples/workflows/Qwen%20Image%202.1%20Turbo%20(non-commercial).json)
+[`Local/Qwen Image 2.1 Turbo (non-commercial)`](examples/workflows/Local/Qwen%20Image%202.1%20Turbo%20(non-commercial)/workflow.json)
 edits with Qwen Image 2.1 and its Turbo LoRA (8 steps), ComfyUI core nodes only (ComfyUI 0.39 or
 later), the mask as its `<image2>`, generated at the region's size. `install-comfyui` asks whether
 to install it; its files come from
@@ -242,7 +297,7 @@ paid work, use the built-in Qwen Image Edit 2511 (Apache-2.0) or a commercial mo
 ComfyUI's API nodes run on comfy.org and bill your account. Give the bridge your comfy.org API key,
 either in `XP_PHOTOCRAFT_COMFY_API_KEY` or in the data folder's `.env` file (same name; a release
 ships `.env.example`); it is passed with each run (never printed, never written anywhere else).
-[`examples/workflows/Nano Banana 2.1 (comfy.org).json`](examples/workflows/Nano%20Banana%202.1%20(comfy.org).json)
+[`Cloud/Nano Banana 2.1 (comfy.org)`](examples/workflows/Cloud/Nano%20Banana%202.1%20(comfy.org)/workflow.json)
 edits with Gemini Nano Banana 2.1, the mask as its Image 2 (it has no mask input), with the prompt
 that explains the mask; a release ships it in `data/workflows`. The example uses the node's format
 of recent ComfyUI releases; on another version, export the graph from your own ComfyUI and title
@@ -261,18 +316,19 @@ in PhotoCraft's status bar. Commands never reach PhotoCraft: `workflows` shows i
 
 Each result becomes a layer, and is also kept **next to the document's file**:
 `<document folder>/xp-work/<document name>/<time>_<action>_<seed>.png`, with a `.json` beside it
-(prompt, workflow, seed, selection and placed bounds). Fifteen projects, fifteen `xp-work` folders,
-nothing piling up in one place. A document never saved has nowhere to keep them: the fork's task bar
-asks to save it first (Save…, Continue without, Cancel). The bridge's own work folder only ever holds
-the last exchange with PhotoCraft (region, mask, placeholder, result).
+(prompt, workflow, seed, settings, run, selection and placed bounds), and each run's region, mask
+and description in `xp-work/<document name>/runs/<run>` (what a re-run starts from). Fifteen
+projects, fifteen `xp-work` folders, nothing piling up in one place. A document never saved has
+nowhere to keep them: the fork's task bar asks to save it first (Save…, Continue without, Cancel).
+The bridge's own work folder keeps its ten newest runs, one folder each.
 
 ## Limits
 
 - The result is pasted through the clipboard (PhotoCraft does not let automation place a file into
   an open document), so a run **overwrites the clipboard**.
-- One run leaves about twenty history steps (the placeholder's, then the result's), interleaved
-  with yours when you keep working: undoing part of them brings the placeholder back.
-- One generation at a time.
+- Undoing a run's steps brings its placeholder back, as a plain layer.
+- A variation of a document never saved can be run again only while the work folder keeps its run
+  (its ten newest runs).
 - PhotoCraft and a local ComfyUI share the graphics card: with 8 GB, a generation can take all of
   it and PhotoCraft closes. Use ComfyUI on another PC, or Nano Banana, there.
 - The built-in workflow generates at one megapixel at most; very large selections lose

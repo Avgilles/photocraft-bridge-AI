@@ -216,7 +216,8 @@ def _report_placed(
     mode: str, layer: str, workflow: str, seed: int, seconds: float, outcome: roundtrip.Outcome
 ) -> None:
     rect = outcome.rect
-    placed = f"{len(outcome.variations)} variations of" if outcome.group else "layer"
+    count = len(outcome.variations)
+    placed = f"{count} variation{'s' if count > 1 else ''} of" if outcome.group else "layer"
     click.echo(
         f"xp-photocraft {mode}: {placed} {layer!r} at {rect} in {seconds} s "
         f"({workflow}, seed {seed})",

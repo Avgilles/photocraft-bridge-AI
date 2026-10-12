@@ -1,6 +1,6 @@
 [project]
 name = "xp-photocraft"
-version = "0.1.1"
+version = "0.2.0"
 description = "Generative Fill and Remove for PhotoCraft: the selection goes to your own ComfyUI server (local or on another PC) and comes back as a masked layer"
 readme = "README.md"
 license = "MIT OR Apache-2.0"

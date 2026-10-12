@@ -107,15 +107,22 @@ for a ComfyUI of your own (0.39 or later), put these four files (~18 GB) in its 
 
 ### Add your own workflows
 
-`data\workflows\` is the catalog: it starts with the three shipped workflows, the built-in one
-included (`Qwen Edit 2511 (ComfyUI).json`, the default for both actions). Any ComfyUI graph dropped
-in **`data\workflows\`** becomes a workflow, named after its file
-(`Flux Fill.json` → *Flux Fill*): menu **XP ▸ Open Workflows Folder**, drop the file, open the XP
-menu again, and pick it for *Generative fill* or *Remove (AI)*. In ComfyUI, save it with
-**Workflow ▸ Export (API)** after giving a few nodes a title (right click ▸ *Title*): `pc:image` on
-the *Load Image* that receives the selection, `pc:prompt` on the prompt node, and if needed
-`pc:mask`, `pc:seed`, `pc:output` (details in the README). If the model needs instructions around
-what you type, write them in the graph's prompt with `{prompt}` where your text goes.
+`data\workflows\` is the catalog, one folder per workflow, in a category folder that becomes a
+submenu: it starts with `Local\Qwen Edit 2511 (ComfyUI)` (the built-in one, the default for both
+actions), `Local\Qwen Image 2.1 Turbo (non-commercial)` and `Cloud\Nano Banana 2.1 (comfy.org)`.
+
+1. In ComfyUI, give a few nodes a title (right click ▸ *Title*): `pc:image` on the *Load Image*
+   that receives the selection, `pc:prompt` on the prompt node, and if needed `pc:mask`, `pc:seed`,
+   `pc:output` (details in the README). If the model needs instructions around what you type,
+   write them in the graph's prompt with `{prompt}` where your text goes.
+2. Save it with **Workflow ▸ Export (API)**, for example `Flux Fill.json`.
+3. Optional, for its settings: **App Mode ▸ App Builder**, pick the inputs to show (steps,
+   guidance…), and save the app beside the export as `Flux Fill.app.json`.
+4. In PhotoCraft, **XP ▸ Import Workflow…**, pick `Flux Fill.json` and a category. The import
+   checks it and says which node types or models your ComfyUI lacks.
+
+It then shows in the XP menu and in the bar's list. ★ stars a workflow (listed first); the last ones
+used come next; the search field finds one among many.
 
 ## 6. Use
 
@@ -123,18 +130,27 @@ Select an area (rectangle, lasso…). A bar appears under it:
 
 - **Generative fill**: type what you want in the field and click. A crossed card takes the spot
   while it generates and you keep working; the result replaces it, as a layer masked by your
-  selection.
+  selection. The list beside the field picks its workflow.
 - **Remove (AI)**: erases what is selected and rebuilds the background. Include the shadow in the
   selection.
 - **Remove**: PhotoCraft's classic fill, no AI.
+- **×3 / ×5**: that many variations, one seed each, in one group. A picker under the group shows
+  one at a time (**◀ ▶**); **Keep** keeps the one shown as a plain layer; **↻** runs it again, with
+  the field's prompt if you changed it. With Nano Banana, each variation is billed.
+- **⚙**: the workflow's settings, when it was imported with an App Builder save; tick *vary* to
+  spread one over the variations (for example steps 4 → 12).
 
-To cancel a generation, delete its card's layer (*… (generating… delete to cancel)*): within two
-seconds the generation stops on ComfyUI and nothing is placed. Undoing the deletion brings back the
-card alone; delete it again.
+You can start another generation elsewhere while one runs: ComfyUI queues them.
+
+To cancel a generation, delete its card's layer (*… (generating… delete to cancel)*), or its group
+for variations, or click **Cancel** in the picker: within two seconds the generation stops on
+ComfyUI and nothing more is placed. Undoing the deletion brings back the card alone; delete it
+again.
 
 Each result is also kept **next to the document's file**, in `xp-work\<document name>\` (the model's
-image + a `.json` with the prompt, the workflow and the seed): one folder per project, nothing piles
-up elsewhere. On a document never saved, the bar first offers to save it.
+image + a `.json` with the prompt, the workflow, the seed and the settings, and what ↻ needs to run
+it again): one folder per project, nothing piles up elsewhere. On a document never saved, the bar
+first offers to save it.
 
 Tips: a margin around the object helps the model; to add something in a uniform area (sky, wall),
 feather the selection (Feather 20–30 px) and leave room for the shadow or the smoke. A generation
